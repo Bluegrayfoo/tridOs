@@ -34,7 +34,7 @@ tridos --reset      forget settings, installed apps and windows (your files stay
 tridos --snapshot   draw one frame as text (for tests); add --text for just the text layer
 ```
 
-Needs Node 18+. No packages to install. Run `npm test` for the self-test (34 checks, headless).
+Needs Node 18+. No packages to install. Run `npm test` for the self-test (36 checks, headless).
 
 ## Text, fonts and the terminal
 
@@ -86,6 +86,9 @@ Only the **App Store** is installed at first. Open it, choose **Get**, and the a
   mode, colour depth, clock, Dock size. Changes apply and save at once.
 
 ## Making apps
+
+**New to this? Read the [guide for people who know JavaScript](docs/GUIDE.md)** (with three example apps in
+[`docs/examples`](docs/examples)). The short version:
 
 Open Code Studio → **New App** → pick a template (Hello, Counter, Paint) → **Run**. Run saves the file,
 checks it, puts it in the Dock and opens it. Apps are JavaScript files in `~/.tridos/apps/`:

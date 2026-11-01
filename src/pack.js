@@ -85,17 +85,29 @@ const BLOCKED = [
   [/\bfetch\b|\bXMLHttpRequest\b|\bWebSocket\b|\bhttps?\b\s*\./, 'the network'],
   [/\bBuffer\b|\bfs\b\s*\.|\breadFile|\bwriteFile|\bunlink|\brmSync/, 'reading or writing files'],
   [/\bos\.(term|windows|apps|userApps|builtin|installed|saveNow|uninstall|install|reloadUserApps|shutdown|compileUserApp|renderer)\b/, 'the TridOS internals (os.term, os.windows, ...)'],
-  [/\[\s*['"`]/, 'looking up names by text (obj["name"])'],
   [/\\u00|\\x[0-9a-f]{2}|String\.fromCharCode|atob\s*\(/i, 'hidden text (escapes, fromCharCode, atob)'],
 ];
+
+// obj["name"] and obj['name'] look a property up by text, which can reach anything. (An array of strings, ['a', 'b'], is fine:
+// a word like return / case / in in front of the bracket means it starts an array, not a lookup.)
+const NOT_A_LOOKUP = new Set(['return', 'case', 'in', 'of', 'typeof', 'void', 'delete', 'throw', 'new', 'else', 'do', 'yield', 'await', 'default', 'instanceof']);
+function textLookup(line) {
+  const re = /([\w$]+|\]|\))\s*\[\s*['"`]/g;
+  let m;
+  while ((m = re.exec(line))) if (!NOT_A_LOOKUP.has(m[1])) return true;
+  return false;
+}
 
 // -> [{ what, line }] for everything not allowed; an empty list means nothing was found (which is not a guarantee).
 export function scanSource(code) {
   const found = [];
   const lines = String(code).split('\n');
+  const bare = lines.map((l) => l.replace(/\/\/.*$/, ''));
   for (const [re, what] of BLOCKED) {
-    const i = lines.findIndex((l) => re.test(l.replace(/\/\/.*$/, '')));
+    const i = bare.findIndex((l) => re.test(l));
     if (i >= 0) found.push({ what, line: i + 1 });
   }
+  const j = bare.findIndex(textLookup);
+  if (j >= 0) found.push({ what: 'looking up names by text (obj["name"])', line: j + 1 });
   return found;
 }

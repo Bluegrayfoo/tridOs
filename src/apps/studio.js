@@ -134,6 +134,7 @@ const DOCS = [
   '  os.launch(appId), os.ui (button, Hits, LineInput, TextArea), os.settings',
   'Colours are numbers like 0xff9f0a, or use os.util.mix(a, b, 0.5).',
   'Run saves the file, checks it, puts the app in the Dock and opens it.',
+  'The full guide for JavaScript programmers is docs/GUIDE.md in github.com/knittingCat/tridOs.',
 ];
 
 class Studio {

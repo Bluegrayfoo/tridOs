@@ -600,6 +600,13 @@ await test('app packages: round trip, a damaged code, a changed app, the things 
   assert.throws(() => decodePackage(forged), /checksum/);
   assert.throws(() => makePackage({ name: '!!!', code: 'x' }), /needs a name/);
   assert.equal(scanSource(HELLO).length, 0);
+  // an array of strings is fine; looking a property up by text is not
+  const ok = (body) => scanSource(`module.exports = { create(os) { ${body} } }`).length === 0;
+  assert.ok(ok("const days = ['Mon', 'Tue']; return ['a', 'b'];"), 'arrays of strings');
+  assert.ok(ok("foo(['a'], [\"b\"]); const o = { k: ['x'] }; if (x) return [`t`];"), 'arrays after ( , : return');
+  assert.ok(!ok("const v = obj['k'];"), 'obj[...]');
+  assert.ok(!ok('const v = list[0]["k"];'), 'a[0][...]');
+  assert.ok(!ok('const v = f()["k"];'), 'f()[...]');
   for (const bad of ["require('fs')", 'process.exit()', "eval('1')", 'new Function("x")', 'fetch("http://x")', 'globalThis.x', 'os.windows[0]', 'os.term.write("x")', 'a.constructor("x")', 'a["b"]', "'\\x70rocess'", 'String.fromCharCode(1)', "import('x')"]) {
     assert.ok(scanSource(`module.exports = { create(os) { ${bad} } }`).length > 0, 'refused: ' + bad);
   }
@@ -985,6 +992,76 @@ await test('a .tridapp file on the Desktop installs by opening it; apps from oth
   plain.uninstall('distributor');
   plain.openFile(file);
   assert.ok(plain.toasts.some((t) => /App Distributor/.test(t.msg)));
+});
+
+// ---------- the guide's example apps ----------
+await test('the example apps in docs/examples work, as your own apps and as shared apps (scanned and fenced)', async () => {
+  const dir = new URL('../docs/examples/', import.meta.url).pathname;
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js'));
+  assert.ok(files.length >= 3);
+  for (const f of files) {
+    const code = fs.readFileSync(path.join(dir, f), 'utf8');
+    assert.equal(scanSource(code).length, 0, f + ' passes the scan, so it can be shared');
+    for (const shared of [false, true]) {
+      const os = fresh();
+      let def;
+      if (shared) {
+        const pkg = makePackage({ name: f.replace('.js', ''), code, author: 'Guide' });
+        def = os.installPackage(pkg, 'test');
+      } else {
+        fs.writeFileSync(path.join(APPS_DIR, 'ex-' + f), code);
+        os.reloadUserApps();
+        def = os.userApps['user:ex-' + f];
+        os.install(def.id);
+      }
+      assert.ok(def && !def.broken, `${f} (${shared ? 'shared' : 'own'}) loads: ${def?.broken}`);
+      const w = os.launch(def.id);
+      assert.ok(w, f + ' opens');
+      screen(os);
+      const app = w.app;
+      if (f === 'stopwatch.js') {
+        assert.match(screen(os), /00:00\.0/);
+        key(os, ' ');
+        for (let i = 0; i < 5; i++) app.tick(0.5);
+        assert.match(screen(os), /00:02\.5/);
+        key(os, 'l');
+        key(os, ' ');
+        assert.match(screen(os), /Lap 1/);
+        assert.equal(app.save().laps.length, 1);
+        // the saved state comes back
+        const again = os.windows.find((x) => x === w) && def.create(os, { ...w, def }, app.save());
+        again.draw(os.contentView(w), true);
+      } else if (f === 'bounce.js') {
+        click(os, w.x + 10, w.y + 6);
+        click(os, w.x + 20, w.y + 4);
+        for (let i = 0; i < 30; i++) assert.equal(app.tick(0.05, true), true);
+        assert.match(screen(os), /2 balls/);
+        key(os, 'c');
+        assert.match(screen(os), /Click anywhere/);
+      } else if (f === 'sticky-note.js') {
+        type(os, 'Hi');
+        assert.match(screen(os), /Hi/);
+        assert.match(app.title(), /Sticky Note \(\d+ characters\)/);
+        assert.equal(app.save().text.startsWith('Hi'), true);
+      }
+      os.draw();
+      assert.ok(!w.errored, `${f} (${shared ? 'shared' : 'own'}) drew without an error`);
+    }
+  }
+});
+
+await test('an app\'s saved state is written soon after you use it, not only when you quit', () => {
+  const os = fresh();
+  os.install('editor');
+  os.launch('editor');
+  os.stateDirty = false;
+  os.onEvent({ type: 'mouse', kind: 'move', button: 0, x: 5, y: 5 });
+  assert.equal(os.stateDirty, false, 'moving the pointer is not a change');
+  type(os, 'x');
+  assert.equal(os.stateDirty, true, 'typing is');
+  os.saveNow();
+  const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  assert.ok(saved.windows.some((w) => w.app === 'editor'));
 });
 
 console.log(`\n${passed} tests passed`);

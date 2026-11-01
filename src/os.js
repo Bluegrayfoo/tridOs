@@ -515,7 +515,7 @@ export class OS {
     }
     for (const w of this.windows) {
       try {
-        if (w.app?.tick?.(dt, w === this.focused)) this.dirty = true;
+        if (w.app?.tick?.(dt, w === this.focused)) this.dirty = this.stateDirty = true;
       } catch {}
     }
     if (this.toasts.length) {
@@ -956,6 +956,8 @@ export class OS {
       return;
     }
     this.dirty = true;
+    // anything you type or click may have changed an app's saved state: write it out within a couple of seconds (not on mere pointer moves)
+    if (e.type === 'key' || (e.type === 'mouse' && e.kind !== 'move')) this.stateDirty = true;
     try {
       if (e.type === 'key') this.onKey(e);
       else if (e.type === 'mouse') this.onMouse(e);

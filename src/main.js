@@ -59,7 +59,15 @@ async function main() {
   term.onResize = () => os.onResize();
   const restore = () => term.stop();
   process.on('exit', restore);
-  for (const sig of ['SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(0));
+  // closing the terminal window or a kill: save what is open first, so nothing is lost
+  for (const sig of ['SIGTERM', 'SIGHUP']) {
+    process.on(sig, () => {
+      try {
+        os.saveNow();
+      } catch {}
+      process.exit(0);
+    });
+  }
   process.on('uncaughtException', (e) => {
     restore();
     console.error('TridOS crashed:', e && e.stack ? e.stack : e);
