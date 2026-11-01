@@ -785,18 +785,18 @@ const method = a.includes('-X') ? a[a.indexOf('-X') + 1] : 'GET';
 const p = a.find((x, i) => i > 0 && !x.startsWith('-') && a[i - 1] !== '-X' && a[i - 1] !== '--input');
 const mode = process.env.STUB_MODE || 'direct';
 if (p === 'user') out({ login: 'sam' });
-if (p.startsWith('repos/knittingCat/tridOs/contents/')) {
+if (p.startsWith('repos/Bluegrayfoo/tridOs/contents/')) {
   if (method === 'GET') { if (process.env.STUB_EXISTS) out({ sha: 'oldsha' }); fail(404, 'Not Found'); }
-  if (method === 'PUT') { if (mode === 'pr') fail(403, 'Resource not accessible'); out({ content: { html_url: 'https://github.com/knittingCat/tridOs/blob/main/apps/x.tridapp' } }); }
+  if (method === 'PUT') { if (mode === 'pr') fail(403, 'Resource not accessible'); out({ content: { html_url: 'https://github.com/Bluegrayfoo/tridOs/blob/main/apps/x.tridapp' } }); }
   if (method === 'DELETE') out({});
 }
-if (p === 'repos/knittingCat/tridOs/forks') out({ full_name: 'sam/tridOs' });
+if (p === 'repos/Bluegrayfoo/tridOs/forks') out({ full_name: 'sam/tridOs' });
 if (p === 'repos/sam/tridOs') out({ full_name: 'sam/tridOs' });
-if (p === 'repos/knittingCat/tridOs') out({ default_branch: 'main' });
-if (p.startsWith('repos/knittingCat/tridOs/git/ref/')) out({ object: { sha: 'basesha' } });
+if (p === 'repos/Bluegrayfoo/tridOs') out({ default_branch: 'main' });
+if (p.startsWith('repos/Bluegrayfoo/tridOs/git/ref/')) out({ object: { sha: 'basesha' } });
 if (p === 'repos/sam/tridOs/git/refs') out({});
 if (p.startsWith('repos/sam/tridOs/contents/')) { if (method === 'GET') fail(404, 'Not Found'); out({}); }
-if (p === 'repos/knittingCat/tridOs/pulls') out({ html_url: 'https://github.com/knittingCat/tridOs/pull/7' });
+if (p === 'repos/Bluegrayfoo/tridOs/pulls') out({ html_url: 'https://github.com/Bluegrayfoo/tridOs/pull/7' });
 fail(404, 'unexpected ' + p);
 `,
     { mode: 0o755 },
@@ -818,17 +818,17 @@ await test('publishing goes into the tridOs repo: asks first; direct commit with
   const app = () => d.myApps().find((x) => x.name === 'Sky Clock');
   // with write access
   d.publish(app());
-  assert.ok(os.modal && /catalog/.test(os.modal.title) && /knittingCat\/tridOs/.test(os.modal.message) && /public/i.test(os.modal.message));
+  assert.ok(os.modal && /catalog/.test(os.modal.title) && /Bluegrayfoo\/tridOs/.test(os.modal.message) && /public/i.test(os.modal.message));
   assert.ok(!fs.existsSync(log), 'nothing is sent before you say yes');
   os.closeModal(1);
   await until(() => !d.busy);
   assert.equal(d.published.length, 1);
   assert.equal(d.published[0].mode, 'direct');
   const calls = fs.readFileSync(log, 'utf8');
-  assert.match(calls, /api -X PUT repos\/knittingCat\/tridOs\/contents\/apps\/sky-clock\.tridapp --input -/);
+  assert.match(calls, /api -X PUT repos\/Bluegrayfoo\/tridOs\/contents\/apps\/sky-clock\.tridapp --input -/);
   const sent = calls.split('\n').find((l) => /-X PUT/.test(l));
   assert.match(sent, /"message":"Add Sky Clock v2\.1\.0 by Sam"/);
-  assert.ok(fs.readFileSync(clip, 'utf8').includes('github.com/knittingCat/tridOs'));
+  assert.ok(fs.readFileSync(clip, 'utf8').includes('github.com/Bluegrayfoo/tridOs'));
   d.go('published');
   assert.match(screen(os), /in the catalog/);
   // update: the existing file's sha is sent
@@ -844,7 +844,7 @@ await test('publishing goes into the tridOs repo: asks first; direct commit with
   os.closeModal(1);
   await until(() => !d.busy);
   assert.equal(d.published.length, 0);
-  assert.match(fs.readFileSync(log, 'utf8'), /-X DELETE repos\/knittingCat\/tridOs\/contents\/apps\/sky-clock\.tridapp/);
+  assert.match(fs.readFileSync(log, 'utf8'), /-X DELETE repos\/Bluegrayfoo\/tridOs\/contents\/apps\/sky-clock\.tridapp/);
   delete process.env.STUB_EXISTS;
   // without write access: fork, branch, file, pull request
   fs.writeFileSync(log, '');
@@ -853,12 +853,12 @@ await test('publishing goes into the tridOs repo: asks first; direct commit with
   os.closeModal(1);
   await until(() => !d.busy);
   assert.equal(d.published[0].mode, 'pr');
-  assert.equal(d.published[0].url, 'https://github.com/knittingCat/tridOs/pull/7');
+  assert.equal(d.published[0].url, 'https://github.com/Bluegrayfoo/tridOs/pull/7');
   const pr = fs.readFileSync(log, 'utf8');
-  assert.match(pr, /-X POST repos\/knittingCat\/tridOs\/forks/);
+  assert.match(pr, /-X POST repos\/Bluegrayfoo\/tridOs\/forks/);
   assert.match(pr, /-X POST repos\/sam\/tridOs\/git\/refs/);
   assert.match(pr, /-X PUT repos\/sam\/tridOs\/contents\/apps\/sky-clock\.tridapp/);
-  assert.match(pr, /-X POST repos\/knittingCat\/tridOs\/pulls/);
+  assert.match(pr, /-X POST repos\/Bluegrayfoo\/tridOs\/pulls/);
   assert.match(d.status.t, /pull request/);
   d.go('published');
   assert.match(screen(os), /waiting for the owner/);
