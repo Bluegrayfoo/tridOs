@@ -616,13 +616,37 @@ await test('the Code Studio templates all pass the scan (so apps made from them 
   const os = fresh();
   os.install('studio');
   const st = os.launch('studio').app;
-  for (const tpl of [1, 2, 3]) {
+  for (const tpl of [1, 2, 3, 4]) {
     st.newApp();
     os.closeModal(tpl);
     os.modal.input.li = new os.ui.LineInput('Tpl ' + tpl);
     key(os, 'enter');
     assert.equal(scanSource(st.ta.getText()).length, 0, 'template ' + tpl);
   }
+});
+
+await test('the Blank template: listed last, makes an empty runnable app that can be shared', () => {
+  const os = fresh();
+  os.install('studio');
+  os.install('distributor');
+  const st = os.launch('studio').app;
+  st.newApp();
+  assert.deepEqual(os.modal.buttons.map((b) => b.label), ['Cancel', 'Hello', 'Counter', 'Paint', 'Blank']);
+  screen(os);
+  os.closeModal(4); // Blank
+  os.modal.input.li = new os.ui.LineInput('Empty One');
+  key(os, 'enter');
+  const code = st.ta.getText();
+  assert.match(code, /name: 'Empty One'/);
+  assert.match(code, /draw\(v, focused\) \{\s*v\.fill\(os\.th\.bg\);\s*\}/);
+  assert.ok(code.split('\n').length < 22, 'it really is small');
+  st.run();
+  const w = os.windows.find((x) => x.def.id === 'user:empty-one.js');
+  assert.ok(w, 'it runs');
+  screen(os);
+  assert.ok(!w.errored);
+  const pkg = makePackage({ name: 'Empty One', code, author: 'A' });
+  assert.equal(scanSource(pkg.code).length, 0, 'and it can be shared');
 });
 
 await test('sharing: copy the code, save a file, then install it on another computer, reading the source first', async () => {

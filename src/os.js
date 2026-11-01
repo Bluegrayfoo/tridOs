@@ -892,7 +892,7 @@ export class OS {
         s = s.slice(54);
       }
     }
-    const w = clamp(Math.max(36, len(m.title) + 8, ...lines.map((l) => len(l) + 6), m.buttons.reduce((a, b) => a + len(b.label) + 4, 4)), 36, cv.cols - 4);
+    const w = clamp(Math.max(36, len(m.title) + 8, ...lines.map((l) => len(l) + 6), m.buttons.reduce((a, b) => a + len(b.label) + 5, 6)), 36, cv.cols - 4);
     const h = 3 + lines.length + (m.input ? 2 : 0) + 3;
     const x = Math.floor((cv.cols - w) / 2);
     const y = Math.max(2, Math.floor((cv.rows - h) / 3));

@@ -112,6 +112,25 @@ module.exports = {
 `,
 };
 
+// (Blank goes last in the New App list so Hello stays the one Enter picks.)
+TEMPLATES.Blank = (name, glyph) => `// A blank app: just the frame. Press Run to open it (an empty window), then fill in draw().
+// Guide: docs/GUIDE.md in github.com/knittingCat/tridOs
+module.exports = {
+  name: '${name}',
+  desc: 'What it does, in one line',
+  version: '1.0.0',
+  icon: { color: '#8e8e93', glyph: '${glyph}' },
+  size: [40, 12], // window size in cells: columns, rows
+  create(os, win, saved) {
+    return {
+      draw(v, focused) {
+        v.fill(os.th.bg);
+      },
+    };
+  },
+};
+`;
+
 const DOCS = [
   'TridOS app reference',
   '',
