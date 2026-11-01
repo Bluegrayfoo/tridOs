@@ -128,7 +128,7 @@ function ghMessage(r) {
 // Browsing needs no account (raw files and the public API). Publishing uses the gh command: someone with write access to the repo
 // commits the app straight in; anyone else forks the repo and opens a pull request, so the owner reads every app before it is added.
 
-export const catalogRepo = () => process.env.TRIDOS_CATALOG_REPO || 'knittingCat/tridOs';
+export const catalogRepo = () => process.env.TRIDOS_CATALOG_REPO || 'Bluegrayfoo/tridOs';
 export const CATALOG_DIR = 'apps';
 const catalogApi = () => process.env.TRIDOS_CATALOG_API || `https://api.github.com/repos/${catalogRepo()}/contents/${CATALOG_DIR}`;
 export const catalogUrl = () => `https://github.com/${catalogRepo()}/tree/main/${CATALOG_DIR}`;
