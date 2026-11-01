@@ -39,6 +39,44 @@ class IconCtx {
 }
 
 export const ICONS = {
+  tricycle: {
+    c1: 0x43d5ec,
+    c2: 0x1554b9,
+    paint(g) {
+      g.ring(.5, .5, .36, 0xe7faff, true);
+      g.ring(.5, .5, .31, 0x2279c9, true);
+      g.ring(.5, .5, .22, 0x83dff2);
+      g.line(.19,.5,.81,.5,0x83dff2);
+      g.line(.5,.19,.5,.81,0x83dff2);
+      // A compass needle over a globe; the warm tip remains clear at dock size.
+      for(let i=0;i<12;i++) {
+        const t=i/12;
+        g.line(.31+t*.19,.67-t*.17,.70-t*.20,.27+t*.23,0xffffff);
+      }
+      g.line(.50,.50,.70,.27,0xff7157);
+      g.line(.53,.50,.70,.27,0xff7157);
+      g.ring(.5,.5,.045,0x174681,true);
+    },
+  },
+  clock: {
+    c1: 0xffc35a,
+    c2: 0xe67625,
+    paint(g) {
+      g.rect(.42,.10,.16,.06,0xfff5d6);
+      g.rect(.47,.15,.06,.07,0xfff5d6);
+      g.line(.71,.22,.77,.16,0xfff5d6);
+      g.ring(.5,.55,.34,0x724323,true);
+      g.ring(.5,.55,.30,0xfffbef,true);
+      for(let i=0;i<12;i++) {
+        const a=i*Math.PI/6;
+        g.line(.5+Math.sin(a)*.24,.55-Math.cos(a)*.24,.5+Math.sin(a)*.27,.55-Math.cos(a)*.27,0x926b4b);
+      }
+      g.line(.5,.55,.5,.34,0x293746);
+      g.line(.5,.55,.66,.63,0x293746);
+      g.line(.5,.55,.36,.39,0xe56a28);
+      g.ring(.5,.55,.035,0x293746,true);
+    },
+  },
   appstore: {
     c1: 0x4cc9ff,
     c2: 0x0a5fff,
@@ -135,7 +173,8 @@ export const ICONS = {
 
 // icon: an id from ICONS, or { color, glyph } for apps made in Code Studio.
 export function drawIcon(cv, icon, x, y, w, h, { dim = 0 } = {}) {
-  const def = typeof icon === 'string' ? ICONS[icon] : null;
+  const key = typeof icon === 'string' ? icon : icon?.symbol;
+  const def = Object.hasOwn(ICONS, key) ? ICONS[key] : null;
   const base = def ? null : col((icon && icon.color) || 0x5b8def);
   const c1 = def ? def.c1 : lighten(base, 0.25);
   const c2 = def ? def.c2 : darken(base, 0.25);

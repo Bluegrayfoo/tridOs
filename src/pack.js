@@ -25,7 +25,7 @@ export function makePackage({ name, desc = '', version = '1.0.0', author = '', i
     desc: String(desc).slice(0, 140),
     version: /^[0-9A-Za-z.+-]{1,20}$/.test(String(version)) ? String(version) : '1.0.0',
     author: String(author).slice(0, 40),
-    icon: icon && typeof icon === 'object' ? { color: iconColor(icon.color), glyph: String(icon.glyph || name)[0] || '?' } : { color: '#5b8def', glyph: String(name)[0] },
+    icon: icon && typeof icon === 'object' ? { color: iconColor(icon.color), glyph: String(icon.glyph || name)[0] || '?', ...iconSymbol(icon.symbol) } : { color: '#5b8def', glyph: String(name)[0] },
     code,
     sha256: sha256(code),
   };
@@ -34,6 +34,11 @@ export function makePackage({ name, desc = '', version = '1.0.0', author = '', i
 function iconColor(c) {
   if (typeof c === 'number') return '#' + (c & 0xffffff).toString(16).padStart(6, '0');
   return /^#[0-9a-fA-F]{6}$/.test(String(c)) ? String(c) : '#5b8def';
+}
+
+// Optional built-in artwork; older clients still have color/glyph as a fallback.
+function iconSymbol(symbol) {
+  return ['clock', 'tricycle'].includes(symbol) ? { symbol } : {};
 }
 
 export function encodePackage(pkg) {
@@ -69,7 +74,7 @@ export function checkPackage(pkg) {
   if (pkg.code.length > MAX_CODE) bad('The app is too big.');
   if (sha256(pkg.code) !== pkg.sha256) bad('The app was changed after it was made (its checksum does not match). Do not install it.');
   const icon = pkg.icon && typeof pkg.icon === 'object' ? pkg.icon : {};
-  return { ...pkg, desc: String(pkg.desc || ''), author: String(pkg.author || ''), icon: { color: iconColor(icon.color), glyph: String(icon.glyph || pkg.name)[0] || '?' } };
+  return { ...pkg, desc: String(pkg.desc || ''), author: String(pkg.author || ''), icon: { color: iconColor(icon.color), glyph: String(icon.glyph || pkg.name)[0] || '?', ...iconSymbol(icon.symbol) } };
 }
 
 // What an app from someone else may not do. These are refused (not just warned about) because each one reaches outside the app.
