@@ -7,14 +7,14 @@ a Dock, windows with traffic lights and shadows, wallpapers, light and dark them
 
 ## Install
 
-With [tlib](https://github.com/BlueGrayFoo/TLIB):
+With [TLib](https://github.com/BlueGrayFoo/TLIB):
 
 ```
 tlib install knittingCat/tridOs
 tridos
 ```
 
-Without tlib (needs [Node.js](https://nodejs.org) 18 or newer, nothing else):
+Without TLib (needs [Node.js](https://nodejs.org) 18 or newer, nothing else):
 
 ```
 git clone https://github.com/knittingCat/tridOs.git
