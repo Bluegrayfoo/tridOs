@@ -625,6 +625,17 @@ await test('the Code Studio templates all pass the scan (so apps made from them 
   }
 });
 
+await test('Code Studio\'s Reference says where the full documentation is: on GitHub', () => {
+  const os = fresh();
+  os.install('studio');
+  const st = os.launch('studio').app;
+  st.showDocs = true;
+  const s = screen(os);
+  assert.match(s, /full documentation is on GitHub: github\.com\/knittingCat\/tridOs/);
+  assert.match(s, /docs\/GUIDE\.md/);
+  st.showDocs = false;
+});
+
 await test('the Blank template: listed last, makes an empty runnable app that can be shared', () => {
   const os = fresh();
   os.install('studio');

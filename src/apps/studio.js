@@ -132,7 +132,10 @@ module.exports = {
 `;
 
 const DOCS = [
-  'TridOS app reference',
+  'The full documentation is on GitHub: github.com/knittingCat/tridOs',
+  '  README.md: everything about TridOS.   docs/GUIDE.md: the guide for JavaScript people.',
+  '',
+  'TridOS app reference (the short version)',
   '',
   'An app is a file that sets module.exports to an object:',
   '  name, desc, icon: { color, glyph }, size: [cols, rows], create(os, win, saved)',
@@ -153,7 +156,6 @@ const DOCS = [
   '  os.launch(appId), os.ui (button, Hits, LineInput, TextArea), os.settings',
   'Colours are numbers like 0xff9f0a, or use os.util.mix(a, b, 0.5).',
   'Run saves the file, checks it, puts the app in the Dock and opens it.',
-  'The full guide for JavaScript programmers is docs/GUIDE.md in github.com/knittingCat/tridOs.',
 ];
 
 class Studio {
@@ -323,7 +325,7 @@ class Studio {
     x += button(v, this.hits, x, 0, 'Reference', th, () => (this.showDocs = !this.showDocs), { active: this.showDocs }) + 1;
     x += button(v, this.hits, x, 0, 'Delete', th, () => this.remove()) + 1;
     // editor and console
-    const conH = Math.max(5, Math.floor(v.h * 0.3));
+    const conH = this.showDocs ? Math.max(8, Math.floor(v.h * 0.7)) : Math.max(5, Math.floor(v.h * 0.3)); // the Reference gets more room
     const edH = v.h - 1 - conH;
     const ed = v.sub(SIDE, 1, v.w - SIDE, edH);
     this.edView = ed;
