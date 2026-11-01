@@ -7,10 +7,11 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { Hits, LineInput, TextArea, button } from '../ui.js';
+import { Hits, LineInput, button } from '../ui.js';
 import { APPS_DIR, DISK, PUBLISHED_FILE } from '../fs.js';
 import { makePackage, encodePackage, decodePackage, scanSource, PREFIX } from '../pack.js';
-import { copyText, pasteText, fetchText, fetchCatalog, publishToCatalog, removeFromCatalog, catalogRepo, catalogUrl, run } from '../net.js';
+import { copyText, pasteText, fetchText, loadCatalog, clearCatalogCache, publishToCatalog, removeFromCatalog, catalogRepo, catalogUrl, run } from '../net.js';
+import { ReviewPanel } from '../review.js';
 import { drawIcon } from '../icons.js';
 import { clamp, fit, mix } from '../util.js';
 
@@ -92,7 +93,7 @@ class Distributor {
     this.catalogError = '';
     this.os.dirty = true;
     try {
-      this.catalog = (await fetchCatalog(decodePackage)).sort((a, b) => a.pkg.name.localeCompare(b.pkg.name));
+      this.catalog = await loadCatalog(decodePackage, { force: true });
     } catch (e) {
       this.catalogError = e.message;
       this.catalog = [];
@@ -179,6 +180,7 @@ class Distributor {
             savePublished(this.published);
             await copyText(url);
             this.catalog = null;
+            clearCatalogCache();
             this.say(mode === 'direct' ? `Published. It is in the catalog now. Link on your clipboard: ${url}` : `Sent for review as a pull request. It appears in the catalog once the owner merges it. Link on your clipboard: ${url}`, 'ok');
           } catch (e) {
             this.say(e.message, 'err');
@@ -204,6 +206,7 @@ class Distributor {
         this.published = this.published.filter((r) => r !== rec);
         savePublished(this.published);
         this.catalog = null;
+        clearCatalogCache();
       } catch (e) {
         this.say(e.message, 'err');
       }
@@ -250,15 +253,12 @@ class Distributor {
     }
   }
   openReview(pkg, source) {
-    const existing = this.os.userApps[`community:${pkg.id}.js`];
-    const own = this.os.userApps[`user:${pkg.id}.js`];
-    this.review = { pkg, source, findings: scanSource(pkg.code), existing, own, ta: new TextArea(pkg.code, { lang: 'js' }) };
-    this.review.ta.follow = false;
+    this.review = new ReviewPanel(this.os, pkg, source);
     this.os.dirty = true;
   }
   install() {
     const r = this.review;
-    if (!r || r.findings.length) return;
+    if (!r || !r.canInstall) return;
     try {
       const def = this.os.installPackage(r.pkg, r.source);
       this.review = null;
@@ -431,44 +431,18 @@ class Distributor {
     }
   }
 
-  drawReview(v, focused) {
-    const th = this.os.th;
-    const r = this.review;
-    const p = r.pkg;
-    v.text(2, 1, `Install “${p.name}”?`, th.text);
-    v.text(2, 2, fit(`by ${p.author || 'someone'}  ·  v${p.version}  ·  ${kb(p.code.length)}  ·  checksum ${p.sha256.slice(0, 12)}`, v.w - 4), th.dim);
-    v.text(2, 3, fit(`from ${r.source}`, v.w - 4), th.dim);
-    let y = 4;
-    if (r.own) v.text(2, y++, 'You already have an app of yours with this name. Both will be in the Dock.', th.warn);
-    if (r.existing) v.text(2, y++, `This replaces the version you have (v${r.existing.version}).`, th.warn);
-    for (const line of ['This app is code that runs on your computer. TridOS fences it in but cannot', 'fully sandbox it: read the source, and install only apps from people you trust.']) v.text(2, y++, fit(line, v.w - 4), th.warn);
-    if (r.findings.length) {
-      for (const f of r.findings.slice(0, 3)) v.text(2, y++, fit(`Not allowed: ${f.what} (line ${f.line})`, v.w - 4), th.danger);
-      v.text(2, y++, 'TridOS will not install this app.', th.danger);
-    }
-    const bottom = v.h - 3;
-    const src = v.sub(1, y + 1, v.w - 2, bottom - y - 1);
-    r.ta.draw(src, th, { focus: false });
-    v.text(2, y, 'Source:', th.dim);
-    const by = v.h - 2;
-    button(v, this.hits, v.w - 13, by, r.findings.length ? 'Cannot install' : 'Install', th, () => this.install(), { primary: !r.findings.length, width: 12 });
-    button(v, this.hits, v.w - 23, by, 'Cancel', th, () => ((this.review = null), (this.os.dirty = true)), { width: 9 });
-    v.text(2, by, 'Up/Down scroll   Enter install   Esc cancel', th.dim);
+  drawReview(v) {
+    this.review.draw(v, this.hits, { onInstall: () => this.install(), onCancel: () => this.cancelReview() });
+  }
+  cancelReview() {
+    this.review = null;
+    this.os.dirty = true;
   }
 
   // ----- input -----
   key(e) {
     const k = e.key;
-    if (this.review) {
-      if (k === 'escape') return (this.review = null), true;
-      if (k === 'enter') return this.install(), true;
-      if (['up', 'down', 'pageup', 'pagedown', 'home', 'end'].includes(k)) {
-        this.review.ta.key(e, 8);
-        this.review.ta.follow = true;
-        return true;
-      }
-      return false;
-    }
+    if (this.review) return this.review.key(e, { onInstall: () => this.install(), onCancel: () => this.cancelReview() });
     if (k === 'tab') {
       const i = TABS.findIndex((t) => t[0] === this.tab);
       this.go(TABS[(i + (e.shift ? TABS.length - 1 : 1)) % TABS.length][0]);

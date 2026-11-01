@@ -154,6 +154,19 @@ export async function fetchCatalog(decode, { limit = 60 } = {}) {
   return out;
 }
 
+// The catalog, kept for five minutes so opening the App Store and the Distributor does not fetch it again each time.
+let catalogCache = null;
+export async function loadCatalog(decode, { force = false } = {}) {
+  const key = catalogApi();
+  if (!force && catalogCache && catalogCache.key === key && Date.now() - catalogCache.at < 300000) return catalogCache.items;
+  const items = (await fetchCatalog(decode)).sort((a, b) => a.pkg.name.localeCompare(b.pkg.name));
+  catalogCache = { key, at: Date.now(), items };
+  return items;
+}
+export const clearCatalogCache = () => {
+  catalogCache = null;
+};
+
 // gh api: JSON in, JSON out. Errors carry the HTTP status.
 async function ghJson(args, body = null) {
   const a = ['api', ...args];

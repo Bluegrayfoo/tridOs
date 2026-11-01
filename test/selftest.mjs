@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 
 const home = fs.mkdtempSync(path.join(os_.tmpdir(), 'tridos-test-')) + '/h';
 process.env.TRIDOS_HOME = home;
+const OFFLINE_CATALOG = 'http://127.0.0.1:1/contents'; // tests never reach the real GitHub: the catalog is somewhere that refuses
+process.env.TRIDOS_CATALOG_API = OFFLINE_CATALOG;
 const { OS } = await import('../src/os.js');
 const { KeyParser } = await import('../src/term.js');
 const { Canvas, Renderer, textLayer } = await import('../src/gfx.js');
@@ -898,7 +900,68 @@ await test('the catalog: lists what is in the repo, shows installed / update, an
   process.env.TRIDOS_CATALOG_API = 'http://127.0.0.1:1/contents';
   await d.loadCatalog();
   assert.match(screen(os), /Could not load the catalog/);
-  delete process.env.TRIDOS_CATALOG_API;
+  process.env.TRIDOS_CATALOG_API = OFFLINE_CATALOG;
+  server.close();
+});
+
+await test('the App Store lists catalog apps in Discover; Get shows the source first; installing puts it in the Dock; updates are spotted', async () => {
+  const v1 = encodePackage(mkPkg({ name: 'Shared Toy', desc: 'Something fun', version: '1.0.0', author: 'Kim' }));
+  let served = v1;
+  const server = http.createServer((req, res) => {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    if (req.url === '/contents') return res.end(JSON.stringify([{ name: 'shared-toy.tridapp', type: 'file', download_url: base + '/raw/toy', html_url: base + '/blob/toy' }]));
+    if (req.url === '/raw/toy') return res.end(served);
+    res.statusCode = 404;
+    res.end('no');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  process.env.TRIDOS_CATALOG_API = `http://127.0.0.1:${server.address().port}/contents`;
+  const os = fresh();
+  const store = os.launch('appstore').app;
+  await until(() => store.communityState !== 'loading');
+  let s = screen(os);
+  assert.match(s, /Finder/, 'the built-in apps are still there');
+  store.sel = store.list().findIndex((d) => d.name === 'Shared Toy'); // (it is below the built-in ones: scroll to it)
+  assert.ok(store.sel > 5);
+  s = screen(os);
+  assert.match(s, /Shared Toy/, 'and the shared one');
+  assert.match(s, /From Kim/);
+  assert.match(s, /read first/);
+  key(os, 'enter'); // Get -> the source comes first
+  assert.ok(store.review);
+  assert.equal(os.isInstalled('community:shared-toy.js'), false);
+  s = screen(os);
+  assert.match(s, /Install “Shared Toy”\?/);
+  assert.match(s, /module\.exports/);
+  key(os, 'escape');
+  assert.equal(store.review, null);
+  assert.equal(os.isInstalled('community:shared-toy.js'), false, 'cancelling installs nothing');
+  key(os, 'enter');
+  key(os, 'enter'); // approve
+  assert.ok(os.isInstalled('community:shared-toy.js'));
+  s = screen(os);
+  assert.match(s, /Open/);
+  assert.ok(dockIdx(os, 'community:shared-toy.js') >= 0, 'it is in the Dock');
+  key(os, 'enter'); // Open
+  assert.ok(os.windows.some((w) => w.def.id === 'community:shared-toy.js'));
+  // a newer version is offered as an update
+  served = encodePackage(mkPkg({ name: 'Shared Toy', desc: 'Something fun', version: '1.1.0', author: 'Kim' }));
+  await store.loadCommunity(true);
+  os.focusWindow(os.windows.find((w) => w.def.id === 'appstore'));
+  assert.match(screen(os), /Update/);
+  // removing it from the Installed tab deletes it
+  store.go('installed');
+  store.sel = store.list().findIndex((d) => d.name === 'Shared Toy');
+  key(os, 'backspace');
+  key(os, 'enter');
+  assert.ok(!os.userApps['community:shared-toy.js']);
+  // offline: the built-in apps still show, with a note
+  process.env.TRIDOS_CATALOG_API = OFFLINE_CATALOG;
+  store.go('discover');
+  await store.loadCommunity(true);
+  s = screen(os);
+  assert.match(s, /Finder/);
+  assert.match(s, /could not be loaded/);
   server.close();
 });
 

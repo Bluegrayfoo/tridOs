@@ -34,7 +34,7 @@ tridos --reset      forget settings, installed apps and windows (your files stay
 tridos --snapshot   draw one frame as text (for tests); add --text for just the text layer
 ```
 
-Needs Node 18+. No packages to install. Run `npm test` for the self-test (33 checks, headless).
+Needs Node 18+. No packages to install. Run `npm test` for the self-test (34 checks, headless).
 
 ## Text, fonts and the terminal
 
@@ -118,7 +118,8 @@ compressed, with a checksum). An app you made in Code Studio can go to other peo
 - **Publish to catalog**: puts it in the **[`apps/`](apps) folder of this repo**, the TridOS catalog, using your GitHub
   account through the [`gh`](https://cli.github.com) command (`gh auth login` once). If you can edit this repo the app goes
   straight in; otherwise TridOS forks the repo and opens a **pull request**, and the owner reads the app's code before
-  merging it. Everyone with TridOS then sees it in **Catalog** and can install it. (Published shows what you sent; you can
+  merging it. Everyone with TridOS then sees it in the **App Store** (Discover, next to the apps that come with TridOS, marked
+  "shared") and in the Distributor's **Catalog**. Choosing Get shows the app's source first, and only then installs it. (Published shows what you sent; you can
   take back an app you put in directly.)
 - **Copy code**: puts the text on your clipboard; paste it in a message. The other person pastes it in **Get apps**.
 - **Save file**: writes `name.tridapp` on your Desktop. Send the file; opening it in TridOS (Finder or Desktop) installs it.
