@@ -10,20 +10,20 @@ a Dock, windows with traffic lights and shadows, wallpapers, light and dark them
 With [TLib](https://github.com/BlueGrayFoo/TLIB):
 
 ```
-tlib install knittingCat/tridOs
+tlib install Bluegrayfoo/tridOs
 tridos
 ```
 
 Without TLib (needs [Node.js](https://nodejs.org) 18 or newer, nothing else):
 
 ```
-git clone https://github.com/knittingCat/tridOs.git
+git clone https://github.com/Bluegrayfoo/tridOs.git
 cd tridOs
 ./bin/tridos
 ```
 
 To get a `tridos` command anywhere, link it onto your PATH: `ln -s "$PWD/bin/tridos" ~/.local/bin/tridos`
-(or any folder on your PATH). To update: `tlib update knittingCat/tridOs`, or `git pull`.
+(or any folder on your PATH). To update: `tlib update Bluegrayfoo/tridOs`, or `git pull`.
 
 ## Run
 
@@ -34,7 +34,7 @@ tridos --reset      forget settings, installed apps and windows (your files stay
 tridos --snapshot   draw one frame as text (for tests); add --text for just the text layer
 ```
 
-Needs Node 18+. No packages to install. Run `npm test` for the self-test (37 checks, headless).
+Needs Node 18+ for the desktop. Tricycle browser needs Node 20+ and the optional browser packages (setup below). Run `npm test` for desktop and app checks; `npm run test:browser` checks real Chromium rendering and interaction.
 
 ## Text, fonts and the terminal
 
@@ -74,6 +74,8 @@ so). Then:
 
 Only the **App Store** is installed at first. Open it, choose **Get**, and the app lands in the Dock:
 
+- **Tricycle browser**: a real Chromium browser with tabs, links, forms, JavaScript, back/forward, reload and scrolling. Web pages are rendered into the terminal pixel buffer. See [browser setup](#tricycle-browser-setup).
+- **Clock & Stopwatch**: local digital/analog clock, stopwatch, pause/resume, reset and lap history. A running stopwatch continues across restarts. Also available as a shared catalog app.
 - **Finder**: browse the TridOS disk, make folders and files, rename, trash, open. (Keys: arrows, Enter,
   Backspace up, `n` new folder, `f` new file, `r` rename, `t` trash.)
 - **Terminal**: TridOS commands (`help`) and, for anything else, your real shell, run in the folder you are in.
@@ -155,3 +157,33 @@ matches, and sends only the cells whose pixels changed. `src/glyphs.js` maps eve
 character (generated from the Unicode names). Apps lay out in *text cells* (6×10 pixels times the text
 size); the terminal's cells are only 2×4 pixels, so the pointer is accurate to a couple of pixels.
 `src/os.js` is the desktop; `src/apps/` has the apps; `src/term.js` reads keys and the mouse.
+
+## Tricycle browser setup
+
+From the TridOS repository folder, run:
+
+```sh
+npm install
+npm run browser:install
+./bin/tridos
+```
+
+Then open **App Store → Tricycle browser → Get**. Clock & Stopwatch is available there too.
+On macOS, an installed Google Chrome can be used when Playwright Chromium is absent.
+Set `TRIDOS_BROWSER_CHANNEL=chrome` explicitly to select Chrome.
+
+Tricycle uses a separate private Chromium session; it does not read your everyday browser profile.
+Cookies and logins last until the app closes. Only the last active URL is restored.
+Use Ctrl+L to replace the address, Ctrl+T for a new tab, Ctrl+R to reload, and click inside a
+page to type. Mouse clicks, dragging, wheel scrolling, Tab and arrow keys go to the live website.
+Up to eight tabs are supported. Rendering refreshes at up to five frames per second when focused.
+This first version does not support downloads, file uploads, audio/video playback controls,
+permission prompts, or native page dialogs (dialogs are dismissed with a notice).
+
+Tricycle is a built-in App Store app because shared `.tridapp` apps intentionally cannot access
+the network or launch a browser engine. The shared-app restrictions remain intact. Update TridOS
+to get Tricycle; Clock & Stopwatch can also be installed from the Catalog without an OS update.
+
+Validation: `npm test` runs the desktop suite and app unit checks. `npm run test:browser` launches
+Chromium against a local fixture and checks HTML/CSS pixels, JavaScript, forms, links, history,
+resizing, tabs and cleanup. This requires permission to start a local server and Chromium.

@@ -8,8 +8,10 @@ import grapher from './grapher.js';
 import studio from './studio.js';
 import settings from './settings.js';
 import distributor from './distributor.js';
+import tricycle from './tricycle.js';
+import clock from './clock.js';
 
 export function loadBuiltinApps() {
-  const list = [appstore, finder, terminal, editor, grapher, studio, distributor, settings];
+  const list = [appstore, finder, terminal, editor, grapher, studio, distributor, settings, tricycle, clock];
   return Object.fromEntries(list.map((a) => [a.id, a]));
 }
