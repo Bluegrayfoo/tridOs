@@ -8,6 +8,8 @@ import path from 'node:path';
 export const HOME = process.env.TRIDOS_HOME || path.join(os.homedir(), '.tridos');
 export const DISK = path.join(HOME, 'disk');
 export const APPS_DIR = path.join(HOME, 'apps');
+export const COMMUNITY_DIR = path.join(APPS_DIR, 'community'); // apps installed from other people (with a .json beside each)
+export const PUBLISHED_FILE = path.join(HOME, 'published.json');
 export const STATE_FILE = path.join(HOME, 'state.json');
 export const TRASH = path.join(DISK, '.Trash');
 
@@ -23,6 +25,7 @@ export const DEFAULT_SETTINGS = {
   dockSize: 'medium',
   dockIndicators: true,
   boot: true,
+  author: '', // the name put on apps you share
 };
 
 const WELCOME = `Welcome to TridOS!
@@ -39,7 +42,7 @@ you write apps of your own.
 `;
 
 export function ensureDirs() {
-  for (const d of [HOME, DISK, APPS_DIR, TRASH, path.join(DISK, 'Desktop'), path.join(DISK, 'Documents'), path.join(DISK, 'Downloads')]) {
+  for (const d of [HOME, DISK, APPS_DIR, COMMUNITY_DIR, TRASH, path.join(DISK, 'Desktop'), path.join(DISK, 'Documents'), path.join(DISK, 'Downloads')]) {
     fs.mkdirSync(d, { recursive: true });
   }
   const welcome = path.join(DISK, 'Documents', 'Welcome.txt');

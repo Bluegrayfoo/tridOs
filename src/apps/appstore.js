@@ -4,7 +4,7 @@ import { Hits, button } from '../ui.js';
 import { drawIcon } from '../icons.js';
 import { clamp, fit, len, mix } from '../util.js';
 
-const STORE = ['finder', 'terminal', 'editor', 'grapher', 'studio'];
+const STORE = ['finder', 'terminal', 'editor', 'grapher', 'studio', 'distributor'];
 const SIDE = 17;
 const ROW = 4;
 
@@ -94,7 +94,7 @@ class Store {
     const mw = v.w - mx - 2;
     const heads = { discover: 'Discover', installed: 'Installed', mine: 'My Apps' };
     v.text(mx, 1, heads[this.tab], th.text);
-    v.text(mx, 2, this.tab === 'mine' ? 'Apps you made in Code Studio. Open Code Studio to write one.' : this.tab === 'installed' ? 'Apps in your Dock. Select one and press Backspace to remove it.' : 'Free apps for TridOS. Choose Get and it is yours.', th.dim);
+    v.text(mx, 2, this.tab === 'mine' ? 'Apps you made in Code Studio, and apps from other people (get them with App Distributor).' : this.tab === 'installed' ? 'Apps in your Dock. Select one and press Backspace to remove it.' : 'Free apps for TridOS. Choose Get and it is yours.', th.dim);
     for (let x = mx; x < v.w - 1; x++) v.text(x, 3, '─', th.line);
     const list = this.list();
     this.sel = clamp(this.sel, 0, Math.max(0, list.length - 1));
@@ -112,7 +112,7 @@ class Store {
       drawAppIcon(v, def, mx + 1, y, 5, 3);
       v.text(mx + 8, y, def.name, th.text);
       v.text(mx + 8, y + 1, fit(def.desc || '', mw - 22), th.dim);
-      const kind = def.user ? 'Made in Code Studio' : 'Free · TridOS';
+      const kind = def.external ? `From ${def.author || 'someone'} · v${def.version}` : def.user ? 'Made in Code Studio' : 'Free · TridOS';
       v.text(mx + 8, y + 2, kind, th.dim);
       const bx = v.w - 14;
       const dl = this.downloads[def.id];
@@ -158,7 +158,7 @@ export default {
   name: 'App Store',
   desc: 'Get new apps for TridOS.',
   icon: 'appstore',
-  size: [78, 24],
+  size: [78, 28],
   minSize: [60, 14],
   create: (os, win, data) => new Store(os, win, data),
 };

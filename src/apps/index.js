@@ -7,8 +7,9 @@ import editor from './editor.js';
 import grapher from './grapher.js';
 import studio from './studio.js';
 import settings from './settings.js';
+import distributor from './distributor.js';
 
 export function loadBuiltinApps() {
-  const list = [appstore, finder, terminal, editor, grapher, studio, settings];
+  const list = [appstore, finder, terminal, editor, grapher, studio, distributor, settings];
   return Object.fromEntries(list.map((a) => [a.id, a]));
 }

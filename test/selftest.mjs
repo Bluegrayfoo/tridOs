@@ -572,5 +572,219 @@ await test('text size: Auto picks the biggest that fits; Alt+ and Alt- change it
   assert.equal(os.mouse.y, Math.floor((40 * os.cv.tph) / os.cv.ph));
 });
 
+// ---------- App Distributor ----------
+const { makePackage, encodePackage, decodePackage, scanSource } = await import('../src/pack.js');
+const { COMMUNITY_DIR } = await import('../src/fs.js');
+const http = await import('node:http');
+const clip = path.join(path.dirname(home), 'clipboard.txt');
+process.env.TRIDOS_CLIPBOARD_FILE = clip;
+const HELLO = `module.exports = { name: 'Sky Clock', desc: 'Shows the sky', version: '2.1.0', icon: { color: '#ff9f0a', glyph: 'S' }, size: [40, 10],
+  create(os, win, saved) { let n = (saved && saved.n) || 0; return { draw(v) { v.fill(os.th.bg); v.text(2, 1, 'Hello from a stranger ' + n, os.th.text); }, key(e) { if (e.key === 'enter') n++; }, save() { return { n }; } }; } };`;
+const mkPkg = (over = {}) => makePackage({ name: 'Sky Clock', desc: 'Shows the sky', version: '2.1.0', author: 'Sam', icon: { color: '#ff9f0a', glyph: 'S' }, code: HELLO, ...over });
+
+await test('app packages: round trip, a damaged code, a changed app, the things apps may not use', () => {
+  const pkg = mkPkg();
+  const text = encodePackage(pkg);
+  assert.ok(text.startsWith('TRIDAPP1.'));
+  assert.deepEqual(decodePackage(`Here you go! ${text} :)`).id, 'sky-clock');
+  assert.equal(decodePackage(text).code, HELLO);
+  assert.throws(() => decodePackage('hello'), /not a TridOS app code/);
+  assert.throws(() => decodePackage(text.slice(0, text.length - 40)), /damaged|cut off/);
+  const forged = encodePackage({ ...pkg, code: pkg.code + '\n// extra' }); // same checksum, different code
+  assert.throws(() => decodePackage(forged), /checksum/);
+  assert.throws(() => makePackage({ name: '!!!', code: 'x' }), /needs a name/);
+  assert.equal(scanSource(HELLO).length, 0);
+  for (const bad of ["require('fs')", 'process.exit()', "eval('1')", 'new Function("x")', 'fetch("http://x")', 'globalThis.x', 'os.windows[0]', 'os.term.write("x")', 'a.constructor("x")', 'a["b"]', "'\\x70rocess'", 'String.fromCharCode(1)', "import('x')"]) {
+    assert.ok(scanSource(`module.exports = { create(os) { ${bad} } }`).length > 0, 'refused: ' + bad);
+  }
+});
+
+await test('the Code Studio templates all pass the scan (so apps made from them can be shared)', async () => {
+  const os = fresh();
+  os.install('studio');
+  const st = os.launch('studio').app;
+  for (const tpl of [1, 2, 3]) {
+    st.newApp();
+    os.closeModal(tpl);
+    os.modal.input.li = new os.ui.LineInput('Tpl ' + tpl);
+    key(os, 'enter');
+    assert.equal(scanSource(st.ta.getText()).length, 0, 'template ' + tpl);
+  }
+});
+
+await test('sharing: copy the code, save a file, then install it on another computer, reading the source first', async () => {
+  const a = fresh();
+  a.settings.author = 'Sam';
+  a.install('studio');
+  a.install('distributor');
+  fs.writeFileSync(path.join(APPS_DIR, 'sky-clock.js'), HELLO);
+  a.reloadUserApps();
+  const d = a.launch('distributor').app;
+  assert.match(screen(a), /Share your apps/);
+  assert.match(screen(a), /Sky Clock/);
+  d.copyCode(d.myApps().find((x) => x.name === 'Sky Clock'));
+  await sleep(100);
+  const code = fs.readFileSync(clip, 'utf8');
+  assert.equal(decodePackage(code).author, 'Sam');
+  assert.match(d.status.t, /Copied the code/);
+  d.saveFile(d.myApps().find((x) => x.name === 'Sky Clock'));
+  const file = path.join(DISK, 'Desktop', 'sky-clock.tridapp');
+  assert.ok(fs.existsSync(file));
+  assert.equal(decodePackage(fs.readFileSync(file, 'utf8')).name, 'Sky Clock');
+  // the other computer: a new home folder
+  fs.rmSync(path.join(APPS_DIR, 'sky-clock.js'));
+  a.reloadUserApps();
+  const b = fresh();
+  b.install('distributor');
+  const e = b.launch('distributor').app;
+  e.tab = 'get';
+  e.input.set(code);
+  await e.get();
+  assert.ok(e.review, 'a review comes first');
+  assert.equal(b.isInstalled('community:sky-clock.js'), false, 'nothing is installed before approval');
+  let s = screen(b);
+  assert.match(s, /Install “Sky Clock”\?/);
+  assert.match(s, /by Sam/);
+  assert.match(s, /module\.exports/, 'the source is shown');
+  assert.match(s, /trust/);
+  key(b, 'enter'); // approve
+  assert.ok(b.isInstalled('community:sky-clock.js'));
+  const def = b.userApps['community:sky-clock.js'];
+  assert.ok(def.external);
+  assert.equal(def.author, 'Sam');
+  assert.equal(def.version, '2.1.0');
+  assert.ok(fs.existsSync(path.join(COMMUNITY_DIR, 'sky-clock.js')) && fs.existsSync(path.join(COMMUNITY_DIR, 'sky-clock.json')));
+  const w = b.launch('community:sky-clock.js');
+  assert.match(screen(b), /Hello from a stranger 0/);
+  key(b, 'enter');
+  assert.match(screen(b), /Hello from a stranger 1/);
+  b.saveNow();
+  const c = newOS(); // it survives a restart, state and all
+  assert.ok(c.isInstalled('community:sky-clock.js'));
+  c.restoreWindows();
+  assert.match(screen(c), /Hello from a stranger 1/);
+  assert.ok(w);
+});
+
+await test('an app from someone else is fenced: refused if it reaches out, refused if changed after install', async () => {
+  const os = fresh();
+  os.install('distributor');
+  const d = os.launch('distributor').app;
+  const evil = mkPkg({ name: 'Evil', code: `module.exports = { name: 'Evil', create(os) { const fs = require('fs'); return { draw(v) {} }; } };` });
+  d.openReview(evil, 'test');
+  assert.equal(d.review.findings.length > 0, true);
+  assert.match(screen(os), /Not allowed: require/);
+  d.install(); // the button does nothing
+  assert.ok(!os.userApps['community:evil.js']);
+  assert.throws(() => os.installPackage(evil), /require/);
+  // the fence at run time: the app only sees a small os, and has no require/process even if the scan were fooled
+  const sneaky = mkPkg({ name: 'Sneaky', code: `module.exports = { name: 'Sneaky', size: [90, 6], create(os, win) { return { draw(v) { v.fill(os.th.bg); v.text(1, 1, [Object.keys(os).sort().join(' '), typeof win.app, typeof os.cv.pw].join('|'), os.th.text); } }; } };` });
+  os.installPackage(sneaky, 'test');
+  os.launch('community:sneaky.js');
+  assert.match(screen(os), /ask confirm cv dialog mouse settings th toast ui util\|undefined\|number/);
+  // and a file edited after it was installed is refused when loaded
+  fs.appendFileSync(path.join(COMMUNITY_DIR, 'sneaky.js'), '\n// changed');
+  os.reloadUserApps();
+  assert.match(os.userApps['community:sneaky.js'].broken, /changed after it was installed/);
+});
+
+await test('links: https downloads and GitHub gist pages; other schemes and huge files are refused', async () => {
+  const pkgText = encodePackage(mkPkg({ name: 'Linked' }));
+  const server = http.createServer((req, res) => {
+    if (req.url === '/app') return res.end(pkgText);
+    if (req.url === '/big') return res.end('x'.repeat(500 * 1024));
+    if (req.url.startsWith('/gists/')) return res.end(JSON.stringify({ files: { 'linked.tridapp': { filename: 'linked.tridapp', content: pkgText, truncated: false } } }));
+    res.statusCode = 404;
+    res.end('no');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  process.env.TRIDOS_GIST_API = base + '/gists/';
+  const os = fresh();
+  os.install('distributor');
+  const d = os.launch('distributor').app;
+  d.tab = 'get';
+  d.input.set(base + '/app');
+  await d.get();
+  assert.equal(d.review.pkg.name, 'Linked');
+  d.review = null;
+  d.input.set('https://gist.github.com/someone/0123456789abcdef');
+  await d.get();
+  assert.equal(d.review.pkg.name, 'Linked', 'a gist page works');
+  d.review = null;
+  d.input.set(base + '/big');
+  await d.get();
+  assert.match(d.status.t, /too big/);
+  d.input.set(base + '/nothing');
+  await d.get();
+  assert.match(d.status.t, /404/);
+  d.input.set('http://example.com/app');
+  await d.get();
+  assert.match(d.status.t, /https/);
+  d.input.set('hello there');
+  await d.get();
+  assert.match(d.status.t, /Paste a link/);
+  server.close();
+});
+
+await test('publishing: asks first, uses gh to make a public gist, remembers the link, and can delete it', async () => {
+  const bin = path.join(path.dirname(home), 'bin');
+  fs.mkdirSync(bin, { recursive: true });
+  const log = path.join(bin, 'gh.log');
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\necho "$@" >> "${log}"\nif [ "$1 $2" = "gist create" ]; then echo "https://gist.github.com/sam/abc123def4567890"; exit 0; fi\nif [ "$1 $2" = "gist delete" ]; then exit 0; fi\nexit 1\n`, { mode: 0o755 });
+  process.env.TRIDOS_GH = path.join(bin, 'gh');
+  const os = fresh();
+  os.settings.author = 'Sam';
+  os.install('distributor');
+  fs.writeFileSync(path.join(APPS_DIR, 'sky-clock.js'), HELLO);
+  os.reloadUserApps();
+  const d = os.launch('distributor').app;
+  d.publish(d.myApps().find((x) => x.name === 'Sky Clock'));
+  assert.ok(os.modal && /Publish to GitHub/.test(os.modal.title) && /PUBLIC/.test(os.modal.message));
+  assert.ok(!fs.existsSync(log), 'nothing is published before you say yes');
+  os.closeModal(1);
+  await sleep(400);
+  assert.equal(d.published.length, 1);
+  assert.equal(d.published[0].url, 'https://gist.github.com/sam/abc123def4567890');
+  assert.match(fs.readFileSync(log, 'utf8'), /gist create --public/);
+  assert.equal(fs.readFileSync(clip, 'utf8'), 'https://gist.github.com/sam/abc123def4567890');
+  d.go('published');
+  assert.match(screen(os), /abc123def4567890/);
+  d.unpublish(d.published[0]);
+  os.closeModal(1);
+  await sleep(300);
+  assert.equal(d.published.length, 0);
+  assert.match(fs.readFileSync(log, 'utf8'), /gist delete abc123def4567890 --yes/);
+  // gh not installed or not signed in: a plain explanation
+  process.env.TRIDOS_GH = path.join(bin, 'no-such-gh');
+  d.publish(d.myApps()[0]);
+  os.closeModal(1);
+  await sleep(300);
+  assert.match(d.status.t, /GitHub command \(gh\) is not installed/);
+  delete process.env.TRIDOS_GH;
+});
+
+await test('a .tridapp file on the Desktop installs by opening it; apps from others can be removed', async () => {
+  const os = fresh();
+  os.install('distributor');
+  os.install('editor');
+  const file = path.join(DISK, 'Desktop', 'from-a-friend.tridapp');
+  fs.writeFileSync(file, encodePackage(mkPkg({ name: 'From A Friend' })));
+  os.openFile(file);
+  const w = os.windows.find((x) => x.def.id === 'distributor');
+  assert.ok(w.app.review, 'opening the file starts the review');
+  key(os, 'enter');
+  assert.ok(os.isInstalled('community:from-a-friend.js'));
+  assert.match(screen(os), /Installed From A Friend/);
+  os.removeCommunityApp('community:from-a-friend.js');
+  assert.ok(!os.userApps['community:from-a-friend.js'] && !os.isInstalled('community:from-a-friend.js'));
+  assert.ok(!fs.existsSync(path.join(COMMUNITY_DIR, 'from-a-friend.js')));
+  // without the Distributor installed, opening one explains
+  const plain = fresh();
+  plain.uninstall('distributor');
+  plain.openFile(file);
+  assert.ok(plain.toasts.some((t) => /App Distributor/.test(t.msg)));
+});
+
 console.log(`\n${passed} tests passed`);
 fs.rmSync(path.dirname(home), { recursive: true, force: true });

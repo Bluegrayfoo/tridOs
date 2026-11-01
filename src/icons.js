@@ -108,6 +108,19 @@ export const ICONS = {
       g.line(0.56, 0.22, 0.44, 0.78, 0xff6bd6);
     },
   },
+  distributor: {
+    c1: 0x3fe0b0,
+    c2: 0x0a7a9a,
+    paint(g) {
+      const w = 0xffffff;
+      g.line(0.5, 0.14, 0.5, 0.6, w);
+      g.line(0.5, 0.14, 0.3, 0.34, w);
+      g.line(0.5, 0.14, 0.7, 0.34, w);
+      g.line(0.2, 0.52, 0.2, 0.84, w);
+      g.line(0.8, 0.52, 0.8, 0.84, w);
+      g.line(0.2, 0.84, 0.8, 0.84, w);
+    },
+  },
   settings: {
     c1: 0xc9cdd4,
     c2: 0x737982,

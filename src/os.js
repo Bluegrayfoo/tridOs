@@ -8,7 +8,9 @@ import { View, Hits, button, LineInput, TextArea } from './ui.js';
 import { makeTheme, wallpaper, pixelText, pixelTextWidth, FONT_H } from './theme.js';
 import { drawIcon } from './icons.js';
 import { clamp, len, fit, mix, pad, lighten, darken } from './util.js';
-import { DEFAULT_SETTINGS, ensureDirs, loadState, saveState, DISK, APPS_DIR, listDir, inDisk } from './fs.js';
+import { DEFAULT_SETTINGS, ensureDirs, loadState, saveState, DISK, APPS_DIR, COMMUNITY_DIR, listDir, inDisk } from './fs.js';
+import { sha256, scanSource } from './pack.js';
+import { osFacade, winFacade, HIDDEN_GLOBALS } from './sandbox.js';
 import { loadBuiltinApps } from './apps/index.js';
 
 const MIN_COLS = 80; // the smallest desktop, in text cells
@@ -144,45 +146,102 @@ export class OS {
     this.changed();
   }
   // Apps written in Code Studio live in ~/.tridos/apps/*.js
+  // Your own apps (Code Studio) live in ~/.tridos/apps/*.js; apps from other people in ~/.tridos/apps/community/ with a .json beside each.
   reloadUserApps() {
     const next = {};
-    let files = [];
-    try {
-      files = fs.readdirSync(APPS_DIR).filter((f) => f.endsWith('.js'));
-    } catch {}
-    for (const f of files) {
-      const id = 'user:' + f;
-      const r = this.compileUserApp(f, fs.readFileSync(path.join(APPS_DIR, f), 'utf8'));
-      next[id] = r.def || { id, name: f.replace(/\.js$/, ''), desc: 'This app has an error: ' + r.error, icon: { color: 0x8a8a93, glyph: '!' }, size: [50, 12], user: true, broken: r.error, create: () => brokenApp(r.error) };
-    }
+    const scan = (dir, prefix, external) => {
+      let files = [];
+      try {
+        files = fs.readdirSync(dir).filter((f) => f.endsWith('.js'));
+      } catch {}
+      for (const f of files) {
+        const id = prefix + f;
+        let meta = null;
+        let code = '';
+        try {
+          code = fs.readFileSync(path.join(dir, f), 'utf8');
+          if (external) meta = JSON.parse(fs.readFileSync(path.join(dir, f.replace(/\.js$/, '.json')), 'utf8'));
+        } catch {}
+        const r = this.compileUserApp(id, f, code, external ? { external: true, meta } : {});
+        next[id] = r.def || { id, name: meta?.name || f.replace(/\.js$/, ''), desc: 'This app has an error: ' + r.error, icon: { color: 0x8a8a93, glyph: '!' }, size: [50, 12], user: !external, external, author: meta?.author || '', broken: r.error, file: f, create: () => brokenApp(r.error) };
+      }
+    };
+    scan(APPS_DIR, 'user:', false);
+    scan(COMMUNITY_DIR, 'community:', true);
     this.userApps = next;
-    this.installed = this.installed.filter((id) => !id.startsWith('user:') || next[id]);
+    this.installed = this.installed.filter((id) => !/^(user|community):/.test(id) || next[id]);
   }
-  compileUserApp(file, code) {
+  // Compile an app's source. An app from someone else (external) is checked against its recorded checksum and the list of things apps
+  // may not use, gets no require/process/eval, and is handed a small fenced `os` and `win` (see sandbox.js).
+  compileUserApp(id, file, code, { external = false, meta = null } = {}) {
     try {
+      if (external) {
+        if (!meta || meta.sha256 !== sha256(code)) throw new Error('This app was changed after it was installed, so TridOS will not run it. Remove it and install it again.');
+        const bad = scanSource(code);
+        if (bad.length) throw new Error(`It uses ${bad[0].what} (line ${bad[0].line}), which apps from other people may not.`);
+      }
       const mod = { exports: {} };
-      new Function('module', 'exports', 'require', code)(mod, mod.exports, (m) => {
-        if (['fs', 'path', 'os', 'child_process', 'node:fs', 'node:path', 'node:os', 'node:child_process'].includes(m)) return require_(m);
+      const real = (m) => {
+        if (!external && ['fs', 'path', 'os', 'child_process', 'node:fs', 'node:path', 'node:os', 'node:child_process'].includes(m)) return require_(m);
         throw new Error(`require('${m}') is not available in TridOS apps`);
-      });
+      };
+      if (external) new Function('module', 'exports', ...HIDDEN_GLOBALS, code)(mod, mod.exports);
+      else new Function('module', 'exports', 'require', code)(mod, mod.exports, real);
       const d = mod.exports;
       if (!d || typeof d.create !== 'function') throw new Error('module.exports needs a create(os, win) function');
-      const id = 'user:' + file;
+      const create = external ? (os, win, saved) => d.create(osFacade(os), winFacade(win), saved) : d.create;
       return {
         def: {
           id,
-          user: true,
+          user: !external,
+          external,
           file,
-          name: String(d.name || file.replace(/\.js$/, '')),
-          desc: String(d.desc || 'An app made in Code Studio'),
-          icon: d.icon || { color: 0x5b8def, glyph: String(d.name || file)[0] },
+          name: String(external && meta?.name ? meta.name : d.name || file.replace(/\.js$/, '')),
+          desc: String(external && meta?.desc ? meta.desc : d.desc || 'An app made in Code Studio'),
+          icon: external && meta?.icon ? meta.icon : d.icon || { color: 0x5b8def, glyph: String(d.name || file)[0] },
+          version: String((external ? meta?.version : d.version) || '1.0.0'),
+          author: external ? String(meta?.author || '') : '',
+          source: external ? String(meta?.source || '') : '',
           size: Array.isArray(d.size) ? d.size : [50, 14],
-          create: d.create,
+          create,
         },
       };
     } catch (e) {
       return { error: String((e && e.message) || e) };
     }
+  }
+
+  // Put an app from a package on this computer (after the person saw its source). Returns its definition.
+  installPackage(pkg, source = '') {
+    const bad = scanSource(pkg.code);
+    if (bad.length) throw new Error(`It uses ${bad[0].what} (line ${bad[0].line}), which apps from other people may not.`);
+    const id = 'community:' + pkg.id + '.js';
+    for (const w of this.windows.filter((w) => w.def.id === id)) this.closeWindow(w, true);
+    fs.mkdirSync(COMMUNITY_DIR, { recursive: true });
+    const js = path.join(COMMUNITY_DIR, pkg.id + '.js');
+    const meta = path.join(COMMUNITY_DIR, pkg.id + '.json');
+    fs.writeFileSync(js, pkg.code);
+    fs.writeFileSync(meta, JSON.stringify({ id: pkg.id, name: pkg.name, desc: pkg.desc, version: pkg.version, author: pkg.author, icon: pkg.icon, sha256: pkg.sha256, source, installedAt: new Date().toISOString() }, null, 2));
+    this.reloadUserApps();
+    const def = this.userApps[id];
+    if (!def || def.broken) {
+      const why = def?.broken || 'it would not load';
+      fs.rmSync(js, { force: true });
+      fs.rmSync(meta, { force: true });
+      this.reloadUserApps();
+      throw new Error(why);
+    }
+    this.install(id);
+    return def;
+  }
+  removeCommunityApp(id) {
+    const def = this.userApps[id];
+    if (!def || !def.external) return;
+    this.uninstall(id);
+    fs.rmSync(path.join(COMMUNITY_DIR, def.file), { force: true });
+    fs.rmSync(path.join(COMMUNITY_DIR, def.file.replace(/\.js$/, '.json')), { force: true });
+    this.reloadUserApps();
+    this.changed();
   }
 
   // Open an app (or bring its window forward). data is handed to the app's create().
@@ -357,6 +416,12 @@ export class OS {
       if (!this.isInstalled('finder')) return this.toast('Get Finder from the App Store to browse folders.');
       const w = this.launch('finder', { path: abs });
       w?.app?.goTo?.(abs);
+      return;
+    }
+    if (abs.endsWith('.tridapp')) {
+      if (!this.isInstalled('distributor')) return this.toast('Get App Distributor from the App Store to install this app.');
+      const w = this.launch('distributor', { tab: 'get' });
+      w?.app?.importFile?.(abs);
       return;
     }
     if (abs.endsWith('.js') && abs.startsWith(APPS_DIR)) {

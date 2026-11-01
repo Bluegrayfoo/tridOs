@@ -34,7 +34,7 @@ tridos --reset      forget settings, installed apps and windows (your files stay
 tridos --snapshot   draw one frame as text (for tests); add --text for just the text layer
 ```
 
-Needs Node 18+. No packages to install. Run `npm test` for the self-test (25 checks, headless).
+Needs Node 18+. No packages to install. Run `npm test` for the self-test (32 checks, headless).
 
 ## Text, fonts and the terminal
 
@@ -81,6 +81,7 @@ Only the **App Store** is installed at first. Open it, choose **Get**, and the a
 - **Grapher**: plot equations like Desmos: `y = sin(x)`, `f(x) = x^2`, `a = 2` then `y = a x`, `x = 3`, `|x|`.
   Drag to pan, wheel to zoom, Tab for keyboard pan/zoom. Curves are drawn to the pixel.
 - **Code Studio**: write your own apps (below).
+- **App Distributor**: send your apps to anyone with TridOS, and install apps people send you. See below.
 - **System Settings** (in the  menu, not the App Store): dark / light, accent colour, wallpaper (9), pixel
   mode, colour depth, clock, Dock size. Changes apply and save at once.
 
@@ -108,6 +109,29 @@ module.exports = {
 `v.pxH` are the size in pixels). `os.th` has the theme colours, `os.ui` has `button`, `Hits`, `LineInput`
 and `TextArea`, `os.toast`, `os.dialog`, `os.ask` and `os.launch` do what they say. Code Studio's
 **Reference** button shows all of it.
+
+## Sharing apps (App Distributor)
+
+Get **App Distributor** from the App Store. An app you made in Code Studio can be sent three ways, and all
+three carry the same thing: one piece of text starting `TRIDAPP1.` (the app, compressed, with a checksum).
+
+- **Publish link**: makes a *public GitHub gist* on your GitHub account (needs the
+  [`gh`](https://cli.github.com) command, signed in with `gh auth login`) and puts the link on your
+  clipboard. Anyone with TridOS pastes the link into **Get apps**. You can delete the link later (Published).
+- **Copy code**: puts the text on your clipboard; paste it in a message. The other person pastes it in **Get apps**.
+- **Save file**: writes `name.tridapp` on your Desktop. Send the file; opening it in TridOS (Finder or Desktop) installs it.
+
+Before anything is installed you **read the app's source** and approve it. Make sure you trust whoever sent it:
+**an app is code, and TridOS cannot fully sandbox JavaScript.** What it does to limit the risk:
+
+- the code is scanned and **refused** if it uses `require`, `process`, `eval`, `Function`, the network, files, hidden text
+  (escapes, `fromCharCode`), object internals (`.constructor`, `["name"]`) or the TridOS internals;
+- it runs with no `require`/`process`/`eval` and is handed a small fenced `os` and `win` (it cannot reach the Terminal or
+  your other apps), unlike your own apps from Code Studio, which are fully trusted;
+- its checksum is recorded when you install it and checked every time it loads, so a changed file will not run.
+
+This is a fence, not a vault: treat apps from strangers like any program from a stranger. Apps from others live in
+`~/.tridos/apps/community/` and can be removed in Get apps. Add `version: '1.2.0'` to your app to version it.
 
 ## Where things are
 
