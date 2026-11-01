@@ -2,14 +2,13 @@
 // TridOS catalog (the apps/ folder of the tridOs repo). "Get" on a built-in app downloads it (a short progress bar) and puts it in
 // the Dock; "Get" on a community app first shows you its source to read and approve.
 
-import { Hits, button } from '../ui.js';
+import { Hits, button, LineInput } from '../ui.js';
 import { drawIcon } from '../icons.js';
 import { decodePackage } from '../pack.js';
 import { loadCatalog } from '../net.js';
 import { ReviewPanel } from '../review.js';
 import { clamp, fit, mix } from '../util.js';
 
-const STORE = ['finder', 'terminal', 'editor', 'grapher', 'studio', 'distributor'];
 const SIDE = 17;
 const ROW = 4;
 const TABS = [['discover', 'Discover'], ['installed', 'Installed'], ['mine', 'My Apps']];
@@ -23,6 +22,9 @@ class Store {
     this.tab = data?.tab || 'discover';
     this.sel = 0;
     this.scroll = 0;
+    this.search = new LineInput(String(data?.query || '').slice(0, 200));
+    this.searchFocused = false;
+    this.replaceSearch = false;
     this.downloads = {}; // id -> { p: 0..1, rate }
     this.hits = new Hits();
     this.review = null; // a community app being read before it is installed
@@ -31,7 +33,7 @@ class Store {
     this.loadCommunity();
   }
   save() {
-    return { tab: this.tab };
+    return { tab: this.tab, query: this.search.text };
   }
   title() {
     return 'App Store';
@@ -53,10 +55,15 @@ class Store {
   list() {
     const os = this.os;
     const all = os.apps;
-    if (this.tab === 'installed') return os.installed.map((id) => all[id]).filter((d) => d && d.id !== 'appstore' && !d.system);
-    if (this.tab === 'mine') return Object.values(os.userApps);
-    return [...STORE.map((id) => all[id]).filter(Boolean), ...this.community.map((c) => this.communityDef(c))];
+    let list;
+    if (this.tab === 'installed') list = os.installed.map((id) => all[id]).filter((d) => d && d.id !== 'appstore' && !d.system);
+    else if (this.tab === 'mine') list = Object.values(os.userApps);
+    else list = [...Object.values(os.builtin).filter(d => d.id !== 'appstore' && !d.system), ...this.community.map(c => this.communityDef(c))];
+    const terms = this.search.text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return list.filter(d => terms.every(t => `${d.name} ${d.desc || ''} ${d.author || ''}`.toLowerCase().includes(t)));
   }
+  focusSearch() { this.searchFocused = true; this.replaceSearch = true; }
+  clearSearch() { this.search.set(''); this.sel = 0; this.scroll = 0; this.replaceSearch = false; }
   tick(dt) {
     let any = false;
     for (const [id, d] of Object.entries(this.downloads)) {
@@ -101,6 +108,7 @@ class Store {
       this.os.toast(`Could not install it: ${e.message}`);
     }
     this.review = null;
+    this.searchFocused = false;
     this.os.dirty = true;
   }
   cancelReview() {
@@ -129,6 +137,7 @@ class Store {
     this.sel = 0;
     this.scroll = 0;
     this.review = null;
+    this.searchFocused = false;
   }
   draw(v, focused) {
     const th = this.os.th;
@@ -149,6 +158,11 @@ class Store {
     const mw = v.w - mx - 2;
     const heads = { discover: 'Discover', installed: 'Installed', mine: 'My Apps' };
     v.text(mx, 1, heads[this.tab], th.text);
+    const sx = mx + 12, sw = Math.max(1, mw - 18);
+    this.search.draw(v, sx, 1, sw, th, { focus: focused && this.searchFocused, bg: this.searchFocused && this.replaceSearch ? th.sel : th.field });
+    if (!this.search.text && !this.searchFocused) v.text(sx, 1, fit('Search apps…', sw), th.dim);
+    this.hits.add(sx, 1, sw, 1, () => this.focusSearch());
+    button(v, this.hits, v.w - 6, 1, '×', th, () => this.clearSearch(), { width: 4 });
     const sub = {
       mine: 'Apps you made in Code Studio, and apps you installed from other people.',
       installed: 'Apps in your Dock. Select one and press Backspace to remove it.',
@@ -159,10 +173,11 @@ class Store {
     const list = this.list();
     this.sel = clamp(this.sel, 0, Math.max(0, list.length - 1));
     const rows = Math.max(1, Math.floor((v.h - 4) / ROW));
+    this.visibleRows = rows;
     if (this.sel < this.scroll) this.scroll = this.sel;
     if (this.sel >= this.scroll + rows) this.scroll = this.sel - rows + 1;
     if (!list.length) {
-      v.text(mx, 5, this.tab === 'installed' ? 'Nothing installed yet. Get an app from Discover.' : 'No apps yet. Code Studio makes them (get it from Discover).', th.dim);
+      v.text(mx, 5, fit(this.search.text.trim() ? `No apps match "${this.search.text.trim()}".` : this.tab === 'installed' ? 'Nothing installed yet. Get an app from Discover.' : 'No apps yet. Code Studio makes them (get it from Discover).', mw), th.dim);
     }
     list.slice(this.scroll, this.scroll + rows).forEach((def, i) => {
       const idx = this.scroll + i;
@@ -176,7 +191,7 @@ class Store {
       v.text(mx + 8, y + 2, fit(kind, mw - 22), th.dim);
       const bx = v.w - 14;
       const s = this.state(def);
-      const pick = () => (this.sel = idx);
+      const pick = () => { this.sel = idx; this.searchFocused = false; };
       if (s === 'downloading') {
         const dl = this.downloads[def.id];
         v.rect(bx, y + 1, 11, 1, th.ctrl);
@@ -201,6 +216,18 @@ class Store {
     if (this.review) return this.review.key(e, { onInstall: () => this.install(), onCancel: () => this.cancelReview() });
     const list = this.list();
     const k = e.key;
+    if ((e.ctrl && k === 'f') || (!this.searchFocused && k === '/')) { this.focusSearch(); return true; }
+    if (this.searchFocused) {
+      if (k === 'escape') { this.clearSearch(); this.searchFocused = false; return true; }
+      if (k === 'enter' || k === 'tab' || k === 'down' || k === 'up') { this.searchFocused = false; return true; }
+      if (e.ctrl && k === 'a') { this.replaceSearch = true; return true; }
+      if (this.replaceSearch && ((!e.ctrl && !e.alt && e.text) || k === 'backspace' || k === 'delete')) this.search.set('');
+      this.replaceSearch = false;
+      this.search.key(e);
+      if (this.search.text.length > 200) this.search.set(this.search.text.slice(0, 200));
+      this.sel = 0; this.scroll = 0;
+      return true;
+    }
     if (k === 'up') this.sel = Math.max(0, this.sel - 1);
     else if (k === 'down') this.sel = Math.min(list.length - 1, this.sel + 1);
     else if (k === 'left' || k === 'right') {
@@ -215,7 +242,11 @@ class Store {
   mouse(e) {
     if (e.kind === 'wheel') {
       if (this.review) this.review.wheel(e.dir);
-      else this.scroll = Math.max(0, this.scroll + e.dir);
+      else {
+        const count = this.list().length, rows = this.visibleRows || 1;
+        this.scroll = clamp(this.scroll + e.dir, 0, Math.max(0, count - rows));
+        this.sel = clamp(this.sel, this.scroll, Math.max(this.scroll, Math.min(count - 1, this.scroll + rows - 1)));
+      }
     } else if (e.kind === 'down' && e.button === 0) this.hits.click(e.x, e.y);
   }
 }

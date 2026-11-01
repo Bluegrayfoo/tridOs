@@ -109,6 +109,6 @@ export class Tricycle {
 export default {
   id:'tricycle-browser', name:'Tricycle browser', version:'1.0.0',
   desc:'A real Chromium browser: websites, JavaScript, forms and tabs in terminal pixels.',
-  icon:{color:'#2485d1',glyph:'T'}, size:[110,36], minSize:[50,14],
+  icon:'tricycle', size:[110,36], minSize:[50,14],
   create:(os,win,saved) => new Tricycle(os,win,saved),
 };

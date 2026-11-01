@@ -2,8 +2,8 @@
 module.exports = {
   name: 'Clock & Stopwatch',
   desc: 'Local clock, analog face, and a stopwatch with pause, reset and laps.',
-  version: '1.0.0',
-  icon: { color: '#ed9d38', glyph: 'C' },
+  version: '1.1.0',
+  icon: { color: '#ed9d38', glyph: 'C', symbol: 'clock' },
   size: [54, 24],
   create(os, win, saved) {
     const { Hits, button } = os.ui;
