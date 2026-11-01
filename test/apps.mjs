@@ -9,6 +9,8 @@ import { address, BrowserSession } from '../src/browser-engine.js';
 import { Tricycle } from '../src/apps/tricycle.js';
 import { loadBuiltinApps } from '../src/apps/index.js';
 import { scanSource, makePackage, encodePackage, decodePackage } from '../src/pack.js';
+import storeDef from '../src/apps/appstore.js';
+import { drawIcon } from '../src/icons.js';
 
 const th={bg:0xffffff,text:0x222222,dim:0x777777,accent:0x1166cc,line:0xcccccc,field:0xeeeeee,side:0xeeeeee,ctrl:0xdddddd,sel:0xaaccff};
 const os={ui,util,th,settings:{clock24:true},dirty:false,toast() {}};
@@ -58,3 +60,47 @@ browser.mouse({kind:'up',button:0,px:50,py:80,x:8,y:8}); await fake.queue;
 browser.mouse({kind:'wheel',dir:1,px:50,py:80,x:8,y:8}); await fake.queue;
 assert.deepEqual(events,[['text','a'],['key','Tab'],['move',50,40],['down','left'],['move',50,40],['up','left'],['move',50,40],['wheel',0,120]]);
 console.log('PASS: app registration, clock drawing, monotonic stopwatch, laps, restore/reset, package scan/checksum, browser addresses and input forwarding');
+
+process.env.TRIDOS_CATALOG_API='http://127.0.0.1:1/contents';
+const builtin=loadBuiltinApps();
+const shopOS={...os,builtin,apps:builtin,userApps:{},installed:['appstore'],
+ isInstalled(id){return this.installed.includes(id);},
+ install(id){this.installed.push(id);},appDef(id){return this.apps[id];}};
+const store=storeDef.create(shopOS,{},{});
+assert.ok(store.list().some(d=>d.id==='tricycle-browser'),'browser must actually appear in Discover');
+assert.ok(store.list().some(d=>d.id==='clock-stopwatch'),'clock must actually appear in Discover');
+assert.ok(!store.list().some(d=>d.id==='settings'||d.id==='appstore'));
+// Future built-in apps must appear without maintaining a second list.
+shopOS.builtin.future={id:'future',name:'Future App',desc:'A new built-in'};
+assert.ok(store.list().some(d=>d.id==='future'));
+const search=s=>{store.key({key:'f',ctrl:true});for(const c of s)store.key({key:c,text:c});};
+search('TRICYCLE'); assert.deepEqual(store.list().map(d=>d.id),['tricycle-browser']);
+assert.equal(store.key({key:'enter'}),true); // leaves search; does not install by accident
+assert.equal(shopOS.isInstalled('tricycle-browser'),false);
+store.key({key:'enter'}); store.tick(10);
+assert.equal(shopOS.isInstalled('tricycle-browser'),true,'filtered Get installs browser');
+store.go('installed'); assert.deepEqual(store.list().map(d=>d.id),['tricycle-browser']);
+store.go('discover'); search('stopwatch pause'); assert.deepEqual(store.list().map(d=>d.id),['clock-stopwatch']);
+search('no such app'); assert.equal(store.list().length,0);
+const sc=new Canvas(240,70,'octant',1),sv=new ui.View(sc,0,0,78,28);
+store.draw(sv,true); assert.ok(sc.tch.join('').includes('No apps match'));
+store.key({key:'escape'}); assert.equal(store.search.text,'');assert.equal(store.searchFocused,false);
+store.draw(sv,true); store.mouse({kind:'wheel',dir:1}); store.draw(sv,true);
+assert.equal(store.scroll,1,'wheel must not snap back to the previous selection');
+store.community=[{pkg:makePackage({name:'Shared example',author:'Ada',code:'module.exports={};'}),url:'https://example.com'}];
+search('ada'); assert.equal(store.list()[0].name,'Shared example');
+store.searchFocused=false; store.draw(sv,true);
+store.mouse({kind:'down',button:0,x:32,y:1});assert.equal(store.searchFocused,true);
+store.key({key:'backspace'}); assert.equal(store.search.text,'');
+search('clock'); assert.equal(store.save().query,'clock');
+assert.equal(decodePackage(encodePackage(pkg)).icon.symbol,'clock');
+const unknown=makePackage({...clock,icon:{symbol:'__proto__',glyph:'C'},code:source});
+assert.equal(unknown.icon.symbol,undefined);
+for(const icon of ['tricycle',{symbol:'clock',color:'#ed9d38',glyph:'C'}]) {
+ for(const size of [16,32,64]) {
+  const cv=new Canvas(size,size,'half');cv.fill(0);
+  drawIcon(cv,icon,0,0,size,size);
+  assert.ok(new Set(cv.pix).size>8);
+ }
+}
+console.log('PASS: store discovery, future apps, search by name/description/author, filtered installation, empty results, mouse/keyboard focus, saved search, artwork and safe package icon roundtrip');
