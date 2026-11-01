@@ -40,8 +40,8 @@ async function main() {
     return;
   }
   if (args.includes('--snapshot')) {
-    const cols = Number(process.env.COLUMNS) || 110;
-    const rows = Number(process.env.LINES) || 36;
+    const cols = Number(process.env.COLUMNS) || 480; // terminal cells (a small font makes many of them)
+    const rows = Number(process.env.LINES) || 130;
     const os = new OS({ cols, rows });
     os.settings.boot = false;
     os.restoreWindows();

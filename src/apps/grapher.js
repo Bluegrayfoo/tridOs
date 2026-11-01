@@ -385,8 +385,8 @@ class Grapher {
     const mx = this.os.mouse.x - (v.x + gx);
     const my = this.os.mouse.y - v.y;
     if (mx >= 0 && my >= 0 && mx < g.w && my < g.h) {
-      const wx = this.cx + (mx * pwc - W / 2) * s;
-      const wy = this.cy - (my * phc - H / 2) * s;
+      const wx = this.cx + (this.os.ptr.x - (v.x + gx) * pwc - W / 2) * s;
+      const wy = this.cy - (this.os.ptr.y - v.y * phc - H / 2) * s;
       const t = ` (${fmt(wx)}, ${fmt(wy)}) `;
       g.text(g.w - len(t), g.h - 1, t, th.text, mix(th.field, th.accent, 0.25));
     }
@@ -426,19 +426,20 @@ class Grapher {
     const { gx, gw, W, H } = this.geom;
     const s = this.scale || 20 / Math.max(1, W || 100);
     const pwc = this.os.cv.pw;
-    const phc = this.os.cv.ph;
+    // e.px, e.py: the pointer in pixels in this window, so panning and zooming follow it smoothly
+    const gpx = e.px - gx * pwc;
     if (e.kind === 'wheel') {
-      if (e.x >= gx) this.zoom(e.dir > 0 ? 1.15 : 0.87, (e.x - gx) * pwc, e.y * phc, W, H);
+      if (e.x >= gx) this.zoom(e.dir > 0 ? 1.15 : 0.87, gpx, e.py, W, H);
       return;
     }
     if (e.kind === 'down' && e.button === 0) {
       if (e.x >= gx) {
         this.focus = 'graph';
-        this.drag = { x: e.x, y: e.y, cx: this.cx, cy: this.cy, s };
+        this.drag = { x: e.px, y: e.py, cx: this.cx, cy: this.cy, s };
       } else this.hits.click(e.x, e.y);
     } else if (e.kind === 'drag' && this.drag) {
-      this.cx = this.drag.cx - (e.x - this.drag.x) * pwc * this.drag.s;
-      this.cy = this.drag.cy + (e.y - this.drag.y) * phc * this.drag.s;
+      this.cx = this.drag.cx - (e.px - this.drag.x) * this.drag.s;
+      this.cy = this.drag.cy + (e.py - this.drag.y) * this.drag.s;
       this.scale = this.drag.s;
       this.os.stateDirty = true;
     } else if (e.kind === 'up') this.drag = null;

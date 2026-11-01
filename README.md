@@ -12,16 +12,22 @@ tridos --reset      forget settings, installed apps and windows (your files stay
 tridos --snapshot   draw one frame as text (for tests); add --text for just the text layer
 ```
 
-Needs Node 18+. No packages to install. Run `npm test` for the self-test (22 checks, headless).
+Needs Node 18+. No packages to install. Run `npm test` for the self-test (25 checks, headless).
 
-## Fonts and the terminal
+## Text, fonts and the terminal
 
-Octants are new in Unicode 16, so the font has to have them. **Julia Mono** does (and is a good
-terminal font). If the desktop looks like boxes or question marks, open System Settings → Display and
-pick **Sextants** or **Half blocks** (half blocks work in nearly every font). In Terminal.app keep
-*Line spacing* at 1.0 or the block characters will not touch. Mouse reporting must be on (Terminal →
-View → Allow Mouse Reporting). 24-bit colour is used when the terminal supports it (Terminal.app on
-macOS 26, iTerm2, kitty, WezTerm, ...), otherwise 256 colours.
+**All text is drawn in pixels** from a built-in 5×8 font, so it is readable even when your terminal's
+own font is tiny (it was made for a 3 pt terminal font, full screen). The **text size** scales it: by
+default *Auto* picks the biggest size that still leaves room for the desktop (at least 96×28 text
+cells); change it in System Settings → Display, or press **Alt +** / **Alt −** anywhere (Option as
+Meta in Terminal.app: Settings → Profiles → Keyboard), or use the Apple menu → Bigger / Smaller Text.
+
+The block characters themselves come from your font. Octants are new in Unicode 16, so the font has to
+have them. **Julia Mono** does (and is a good terminal font). If the desktop looks like boxes or
+question marks, open System Settings → Display and pick **Sextants** or **Half blocks** (half blocks
+work in nearly every font). In Terminal.app keep *Line spacing* at 1.0 or the blocks will not touch.
+Mouse reporting must be on (Terminal → View → Allow Mouse Reporting). 24-bit colour is used when the
+terminal supports it (Terminal.app on macOS 26, iTerm2, kitty, WezTerm, ...), otherwise 256 colours.
 
 ## Using it
 
@@ -89,7 +95,9 @@ Downloads, and a hidden Trash) and `apps/` (apps you wrote). Files on the Deskto
 
 ## How it works
 
-`src/gfx.js` keeps a pixel buffer and a text layer per frame. For each character cell it picks the two
-dominant colours of its 2×4 pixels, chooses the octant that matches, and sends only the cells that
-changed. `src/glyphs.js` maps every pixel pattern to its character (generated from the Unicode names).
+`src/gfx.js` keeps one pixel buffer per frame (text included, drawn from `src/font.js`). For each
+terminal character it picks the two dominant colours of its 2×4 pixels, chooses the octant that
+matches, and sends only the cells whose pixels changed. `src/glyphs.js` maps every pixel pattern to its
+character (generated from the Unicode names). Apps lay out in *text cells* (6×10 pixels times the text
+size); the terminal's cells are only 2×4 pixels, so the pointer is accurate to a couple of pixels.
 `src/os.js` is the desktop; `src/apps/` has the apps; `src/term.js` reads keys and the mouse.

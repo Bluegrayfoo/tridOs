@@ -109,11 +109,11 @@ class Store {
       const y = 4 + i * ROW;
       const on = idx === this.sel;
       if (on) v.rect(mx - 1, y, mw + 2, ROW - 1, mix(th.bg, th.accent, 0.12));
-      drawAppIcon(v, def, mx + 1, y, 8, 3);
-      v.text(mx + 11, y, def.name, th.text);
-      v.text(mx + 11, y + 1, fit(def.desc || '', mw - 24), th.dim);
+      drawAppIcon(v, def, mx + 1, y, 5, 3);
+      v.text(mx + 8, y, def.name, th.text);
+      v.text(mx + 8, y + 1, fit(def.desc || '', mw - 22), th.dim);
       const kind = def.user ? 'Made in Code Studio' : 'Free · TridOS';
-      v.text(mx + 11, y + 2, kind, th.dim);
+      v.text(mx + 8, y + 2, kind, th.dim);
       const bx = v.w - 14;
       const dl = this.downloads[def.id];
       if (dl) {

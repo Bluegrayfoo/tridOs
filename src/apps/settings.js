@@ -52,9 +52,10 @@ class Settings {
         return [{ type: 'wall', label: 'Wallpaper', key: 'wallpaper' }];
       case 'display':
         return [
+          seg('Text size', 'textScale', [[0, 'Auto'], [1, '1x'], [2, '2x'], [3, '3x'], [4, '4x']]),
           seg('Pixels', 'pixelMode', Object.entries(MODES).map(([id, m]) => [id, m.label])),
           seg('Colour', 'colorMode', [['auto', 'Auto'], ['truecolor', '24-bit'], ['256', '256 colours']]),
-          { type: 'text', lines: ['Octants draw 2x4 pixels in every character cell (needs a font with the', 'Symbols for Legacy Computing Supplement, like Julia Mono). Sextants are 2x3;', 'half blocks are 1x2 and work in almost every font.'] },
+          { type: 'text', lines: [`Text is drawn in pixels, so it stays readable with a tiny terminal font. Now: ${this.os.cv.scale}x (${this.os.cv.cols}x${this.os.cv.rows} text cells).`, 'Alt + and Alt - change it from anywhere. Octants draw 2x4 pixels per terminal character (needs a', 'font with the Symbols for Legacy Computing Supplement, like Julia Mono); sextants are 2x3;', 'half blocks are 1x2 and work in almost every font.'] },
         ];
       case 'dock':
         return [seg('Dock size', 'dockSize', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']]), { type: 'toggle', label: 'Show dots under running apps', key: 'dockIndicators' }];

@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS = {
   accent: 'blue',
   wallpaper: 'waves',
   pixelMode: 'octant',
+  textScale: 0, // 0 = Auto: the biggest text that fits
   colorMode: 'auto',
   clock24: false,
   showSeconds: false,

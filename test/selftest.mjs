@@ -32,22 +32,30 @@ const screen = (os) => {
 };
 const key = (os, k, mods = {}, text) => os.onEvent({ type: 'key', key: k, ctrl: false, alt: false, shift: false, ...mods, text });
 const type = (os, s) => [...s].forEach((c) => key(os, c, {}, c));
+// The terminal reports character cells; tests think in text cells, so turn one into the other (aiming at the middle of the text cell).
+const MODES_PX = { octant: [2, 4], sextant: [2, 3], half: [1, 2] };
+const term = (os, lx, ly) => [Math.floor(((lx + 0.5) * os.cv.pw) / os.cv.tpw), Math.floor(((ly + 0.5) * os.cv.ph) / os.cv.tph)];
+const mouse = (os, kind, lx, ly, button = 0, extra = {}) => {
+  const [x, y] = term(os, lx, ly);
+  os.onEvent({ type: 'mouse', kind, button, x, y, ...extra });
+};
 const click = (os, x, y, button = 0) => {
-  os.onEvent({ type: 'mouse', kind: 'down', button, x, y });
-  os.onEvent({ type: 'mouse', kind: 'up', button, x, y });
+  mouse(os, 'down', x, y, button);
+  mouse(os, 'up', x, y, button);
 };
-const move = (os, x, y) => os.onEvent({ type: 'mouse', kind: 'move', button: 0, x, y });
+const move = (os, x, y) => mouse(os, 'move', x, y);
 const drag = (os, x0, y0, x1, y1) => {
-  os.onEvent({ type: 'mouse', kind: 'down', button: 0, x: x0, y: y0 });
-  os.onEvent({ type: 'mouse', kind: 'drag', button: 0, x: x1, y: y1 });
-  os.onEvent({ type: 'mouse', kind: 'up', button: 0, x: x1, y: y1 });
+  mouse(os, 'down', x0, y0);
+  mouse(os, 'drag', x1, y1);
+  mouse(os, 'up', x1, y1);
 };
-const fresh = (settings = {}) => {
-  const os = new OS({ cols: 130, rows: 40 });
-  Object.assign(os.settings, { boot: false, wallpaper: 'graphite' }, settings);
-  os.applySettings();
-  return os;
+// A desktop of 130x40 text cells at text size 1: the terminal needs 130*6 x 40*10 pixels.
+const termSize = (mode = 'octant') => {
+  const [pw, ph] = MODES_PX[mode];
+  return { cols: Math.ceil((130 * 6) / pw), rows: Math.ceil((40 * 10) / ph) };
 };
+const newOS = (settings = {}) => new OS({ ...termSize(settings.pixelMode), settings: { boot: false, wallpaper: 'graphite', textScale: 1, ...settings } });
+const fresh = (settings = {}) => newOS(settings);
 const dockIdx = (os, id) => os.dockLayout.findIndex((d) => d.def.id === id);
 const tickFor = async (os, seconds) => {
   const end = Date.now() + seconds * 1000;
@@ -100,7 +108,8 @@ await test('renderer: draws, then sends nothing when the frame has not changed',
   cv.text(2, 1, 'hello', 0xff0000);
   const r = new Renderer({ truecolor: true });
   const a = r.flush(cv);
-  assert.ok(a.includes('hello'.slice(0, 1)) && a.includes('38;2;255;0;0'));
+  assert.ok(a.includes('38;2;255;0;0'), 'the red text pixels were sent');
+  assert.equal(cv.tch[1 * cv.cols + 2], 'h', 'and the text is recorded');
   assert.equal(r.flush(cv), '');
   cv.px(0, 0, 0xffffff);
   assert.ok(r.flush(cv).length > 0);
@@ -262,10 +271,10 @@ await test('settings: theme, accent, wallpaper, pixel mode all apply and are sav
   w.app.go('wallpaper');
   assert.match(screen(os), /Sunset/);
   w.app.set('pixelMode', 'sextant');
-  assert.equal(os.cv.ph, 3);
+  assert.equal(os.cv.tph, 3);
   screen(os);
   w.app.set('pixelMode', 'half');
-  assert.equal(os.cv.ph, 2);
+  assert.equal(os.cv.tph, 2);
   screen(os);
   w.app.set('pixelMode', 'octant');
   os.saveNow();
@@ -273,7 +282,7 @@ await test('settings: theme, accent, wallpaper, pixel mode all apply and are sav
   assert.equal(saved.settings.theme, 'light');
   assert.equal(saved.settings.accent, 'green');
   assert.equal(saved.settings.wallpaper, 'sunset');
-  const again = new OS({ cols: 130, rows: 40 });
+  const again = newOS();
   assert.equal(again.settings.theme, 'light');
   assert.equal(again.th.accent, 0x30d158);
   again.restoreWindows();
@@ -290,7 +299,7 @@ await test('installed apps and open windows come back after a restart', () => {
   g.app.input.set('y = x^3');
   g.app.commit();
   a.saveNow();
-  const b = new OS({ cols: 130, rows: 40 });
+  const b = newOS();
   assert.ok(b.isInstalled('finder') && b.isInstalled('grapher'));
   b.restoreWindows();
   const gw = b.windows.find((w) => w.def.id === 'grapher');
@@ -404,7 +413,7 @@ await test('Grapher: plots, pans and zooms; bad input shows an error, not a cras
   key(os, '0');
   assert.equal(g.scale, 0);
   const gx = w.x + g.geom.gx + 10;
-  os.onEvent({ type: 'mouse', kind: 'wheel', dir: -1, x: gx, y: w.y + 8 });
+  mouse(os, 'wheel', gx, w.y + 8, 0, { dir: -1 });
   assert.ok(g.scale > 0);
   drag(os, gx, w.y + 8, gx + 6, w.y + 8);
   assert.notEqual(g.cx, 0);
@@ -458,7 +467,7 @@ await test('Code Studio: make an app from a template, run it, and it is in the D
 });
 
 await test('apps are saved, so Code Studio apps survive a restart', () => {
-  const a = new OS({ cols: 130, rows: 40 });
+  const a = newOS();
   assert.ok(a.userApps['user:test-thing.js']);
   assert.ok(a.isInstalled('user:test-thing.js'));
 });
@@ -508,9 +517,59 @@ await test('every wallpaper draws, and the too-small message appears in a tiny w
     os.applySettings();
     os.render();
   }
-  os.sizeChanged(60, 20);
-  assert.match(screen(os), /needs a window/);
-  os.sizeChanged(130, 40);
+  os.sizeChanged(200, 80);
+  assert.match(screen(os), /needs a bigger window/);
+  os.sizeChanged(termSize().cols, termSize().rows);
+});
+
+await test('text is drawn in pixels: a tiny terminal font does not matter, and no letters are sent to the terminal', () => {
+  const os = fresh({ wallpaper: 'graphite' });
+  os.launch('appstore');
+  os.render();
+  const sent = os.lastOutput.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+  assert.ok(sent.length > 1000);
+  assert.doesNotMatch(sent, /[A-Za-z0-9]/, 'only block characters go to the terminal');
+});
+
+await test('the font has every character the desktop draws', async () => {
+  const { hasGlyph } = await import('../src/font.js');
+  const missing = new Set();
+  const walk = (dir) => {
+    for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, f.name);
+      if (f.isDirectory()) walk(p);
+      else if (f.name.endsWith('.js') && !/glyphs\.js|font\.js/.test(f.name)) {
+        for (const ch of fs.readFileSync(p, 'utf8')) if (ch.codePointAt(0) > 126 && !hasGlyph(ch)) missing.add(ch);
+      }
+    }
+  };
+  walk(new URL('../src', import.meta.url).pathname);
+  // (block-element characters in comments and the glyph tables are not text we draw)
+  const real = [...missing].filter((c) => !/[▀-▟\u{1fb00}-\u{1fbff}\u{1cd00}-\u{1cdff}]/u.test(c));
+  assert.deepEqual(real, [], 'no glyph for: ' + real.join(' '));
+});
+
+await test('text size: Auto picks the biggest that fits; Alt+ and Alt- change it; the pointer maps to the right text cell', () => {
+  // a 3pt terminal full screen: about 800 x 250 characters
+  const os = new OS({ cols: 800, rows: 250, settings: { boot: false, textScale: 0 } });
+  assert.equal(os.cv.scale, 2);
+  assert.ok(os.cv.cols >= 96 && os.cv.rows >= 28);
+  key(os, '-', { alt: true });
+  assert.equal(os.cv.scale, 1);
+  key(os, '=', { alt: true });
+  key(os, '=', { alt: true });
+  assert.equal(os.settings.textScale, 3);
+  assert.equal(os.cv.scale, 3);
+  key(os, '=', { alt: true });
+  assert.equal(os.settings.textScale, 4);
+  assert.equal(os.cv.scale, 3, 'cannot go bigger than leaves room for the desktop');
+  // pixel precision: the pointer's pixels follow the terminal cell, the text cell follows the pixels
+  os.settings.textScale = 2;
+  os.applySettings();
+  os.onEvent({ type: 'mouse', kind: 'move', button: 0, x: 100, y: 40 });
+  assert.equal(os.ptr.x, 100 * os.cv.tpw);
+  assert.equal(os.mouse.x, Math.floor((100 * os.cv.tpw) / os.cv.pw));
+  assert.equal(os.mouse.y, Math.floor((40 * os.cv.tph) / os.cv.ph));
 });
 
 console.log(`\n${passed} tests passed`);

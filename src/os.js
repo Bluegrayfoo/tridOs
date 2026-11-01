@@ -11,18 +11,22 @@ import { clamp, len, fit, mix, pad, lighten, darken } from './util.js';
 import { DEFAULT_SETTINGS, ensureDirs, loadState, saveState, DISK, APPS_DIR, listDir, inDisk } from './fs.js';
 import { loadBuiltinApps } from './apps/index.js';
 
-const MIN_COLS = 80;
+const MIN_COLS = 80; // the smallest desktop, in text cells
 const MIN_ROWS = 24;
-const DOCK_SIZES = { small: [5, 2], medium: [7, 3], large: [9, 4] };
+const DOCK_PX = { small: 36, medium: 52, large: 68 }; // Dock icon size in pixels (at text scale 1; larger text scales it)
 const MENU_ROW = 0;
+const WANT_COLS = 96; // "Auto" text size: the biggest text that still leaves at least this much room
+const WANT_ROWS = 28;
 
 export class OS {
-  constructor({ term = null, cols = 120, rows = 40 } = {}) {
+  // cols, rows: the terminal's size in character cells. settings: overrides (tests).
+  constructor({ term = null, cols = 400, rows = 110, settings = {} } = {}) {
     this.term = term;
     ensureDirs();
     const st = loadState();
     this.firstRun = Object.keys(st).length === 0;
-    this.settings = { ...DEFAULT_SETTINGS, ...(st.settings || {}) };
+    this.settings = { ...DEFAULT_SETTINGS, ...(st.settings || {}), ...settings };
+    this.ptr = { x: -100, y: -100 }; // the pointer in pixels
     this.installed = Array.isArray(st.installed) && st.installed.length ? st.installed : ['appstore'];
     if (!this.installed.includes('appstore')) this.installed.unshift('appstore');
     this.savedWindows = Array.isArray(st.windows) ? st.windows : [];
@@ -50,7 +54,7 @@ export class OS {
     this.builtin = loadBuiltinApps();
     this.truecolor = this.detectTruecolor();
     this.renderer = new Renderer({ truecolor: this.truecolor });
-    this.cv = new Canvas(cols, rows, this.settings.pixelMode);
+    this.cv = new Canvas(cols, rows, this.settings.pixelMode, 1);
     this.wp = null;
     this.hits = new Hits();
     this.dockLayout = [];
@@ -73,9 +77,24 @@ export class OS {
     return false;
   }
 
-  sizeChanged(cols, rows) {
+  // The text scale to use for a terminal of this many pixels: the one in Settings, or for Auto the biggest that leaves room.
+  pickScale(W, H) {
+    const fits = (s) => Math.floor(W / (6 * s)) >= WANT_COLS && Math.floor(H / (10 * s)) >= WANT_ROWS;
+    const want = Number(this.settings.textScale) || 0;
+    if (want) {
+      for (let s = want; s > 1; s--) if (Math.floor(W / (6 * s)) >= MIN_COLS && Math.floor(H / (10 * s)) >= MIN_ROWS) return s;
+      return 1;
+    }
+    for (let s = 4; s > 1; s--) if (fits(s)) return s;
+    return 1;
+  }
+
+  // The terminal is tcols x trows characters. (Each is a few pixels; the text cells apps lay out in are bigger.)
+  sizeChanged(tcols, trows) {
     this.cv.setMode(this.settings.pixelMode);
-    this.cv.resize(cols, rows);
+    const m = MODES[this.cv.mode];
+    this.cv.setScale(this.pickScale(tcols * m.pw, trows * m.ph));
+    this.cv.resize(tcols, trows);
     this.wp = wallpaper(this.settings.wallpaper, this.cv.W, this.cv.H);
     this.renderer.invalidate();
     for (const w of this.windows) this.clampWindow(w);
@@ -86,8 +105,16 @@ export class OS {
     this.th = makeTheme(this.settings);
     this.truecolor = this.detectTruecolor();
     this.renderer.truecolor = this.truecolor;
-    this.sizeChanged(this.cv.cols, this.cv.rows);
+    this.sizeChanged(this.cv.tcols, this.cv.trows);
     this.changed();
+  }
+
+  // Alt + / Alt - and the Apple menu: bigger or smaller text.
+  bumpText(delta) {
+    const cur = this.cv.scale;
+    this.settings.textScale = clamp(cur + delta, 1, 4);
+    this.applySettings();
+    this.toast(`Text size ${this.cv.scale}x` + (this.cv.scale !== this.settings.textScale ? ' (the biggest that fits)' : ''));
   }
 
   changed() {
@@ -199,10 +226,20 @@ export class OS {
     this.changed();
     return win;
   }
+  // The Dock's size and place, in pixels.
+  dockMetrics(n = this.dockItems().length) {
+    const cv = this.cv;
+    const S = Math.round((DOCK_PX[this.settings.dockSize] || DOCK_PX.medium) * (0.5 + cv.scale / 2));
+    const pad = Math.round(S * 0.16);
+    const gap = Math.round(S * 0.16);
+    const w = n * S + Math.max(0, n - 1) * gap + 2 * pad;
+    const h = S + 2 * pad + Math.max(4, Math.round(S * 0.12));
+    const margin = Math.round(cv.ph * 0.5);
+    return { S, pad, gap, w, h, x: Math.floor((cv.W - w) / 2), y: cv.H - h - margin };
+  }
   workArea() {
-    const [, ir] = DOCK_SIZES[this.settings.dockSize] || DOCK_SIZES.medium;
-    const dockTop = this.cv.rows - (ir + 3);
-    return { x: 0, y: 1, w: this.cv.cols, h: Math.max(8, dockTop - 1) };
+    const dockTop = Math.floor(this.dockMetrics().y / this.cv.ph);
+    return { x: 0, y: 1, w: this.cv.cols, h: Math.max(8, dockTop - 2) };
   }
   clampWindow(w) {
     w.w = clamp(w.w, 10, this.cv.cols);
@@ -463,9 +500,13 @@ export class OS {
   drawTooSmall() {
     const cv = this.cv;
     cv.fill(0x101014);
-    const msg = `TridOS needs a window of at least ${MIN_COLS}x${MIN_ROWS} (this one is ${cv.cols}x${cv.rows}).`;
-    cv.text(Math.max(0, Math.floor((cv.cols - len(msg)) / 2)), Math.floor(cv.rows / 2), fit(msg, cv.cols), 0xffffff);
-    cv.text(Math.max(0, Math.floor((cv.cols - 40) / 2)), Math.floor(cv.rows / 2) + 1, fit('Make it bigger, or press Ctrl+Cmd+F for full screen.', cv.cols), 0x9a9aa6);
+    const lines = [
+      'TridOS needs a bigger window.',
+      `It has ${cv.cols}x${cv.rows} text cells; it needs ${MIN_COLS}x${MIN_ROWS}.`,
+      'Ctrl+Cmd+F makes it full screen; Cmd and minus',
+      'make the terminal font smaller.',
+    ];
+    lines.forEach((l, i) => cv.text(Math.max(0, Math.floor((cv.cols - len(l)) / 2)), Math.floor(cv.rows / 2) + i, fit(l, cv.cols), i ? 0x9a9aa6 : 0xffffff));
   }
 
   drawSplash(label, progress, off) {
@@ -534,27 +575,23 @@ export class OS {
     const w = win.w * pw;
     const h = win.h * ph;
     // shadow
-    cv.blendRect(x0 - 3, y0 + 1, w + 6, h + 4, 0x000000, focused ? 0.1 : 0.06);
-    cv.blendRect(x0 - 2, y0 + 1, w + 4, h + 3, 0x000000, focused ? 0.14 : 0.08);
-    cv.blendRect(x0 - 1, y0 + 1, w + 2, h + 2, 0x000000, focused ? 0.18 : 0.1);
+    const sc = cv.scale;
+    for (let k = 3; k >= 1; k--) cv.blendRect(x0 - k * sc, y0 + sc, w + 2 * k * sc, h + (k + 1) * sc, 0x000000, (focused ? 0.05 : 0.03) + (4 - k) * (focused ? 0.035 : 0.02));
     // rounded corners: remember the corner pixels, fill the window, put them back
-    const corner = pw > 1 ? [[0, 0], [1, 0], [0, 1]] : [[0, 0]];
-    const spots = [];
-    for (const [dx, dy] of corner) {
-      spots.push([x0 + dx, y0 + dy], [x0 + w - 1 - dx, y0 + dy], [x0 + dx, y0 + h - 1 - dy], [x0 + w - 1 - dx, y0 + h - 1 - dy]);
-    }
-    const saved = spots.map(([x, y]) => cv.get(x, y));
+    const r = Math.max(2, Math.round(ph * 0.3));
+    const outside = cornerOutside(x0, y0, w, h, r);
+    const saved = outside.map(([x, y]) => cv.get(x, y));
     cv.cellFill(win.x, win.y, win.w, 1, focused ? th.bar : th.barOff);
     cv.cellFill(win.x, win.y + 1, win.w, win.h - 1, th.bg);
     cv.pxRect(x0, y0 + ph - 1, w, 1, th.line);
-    spots.forEach(([x, y], i) => cv.px(x, y, saved[i]));
+    outside.forEach(([x, y], i) => cv.px(x, y, saved[i]));
     // traffic lights and title
     const over = this.mouse.y === win.y && this.mouse.x >= win.x + 1 && this.mouse.x <= win.x + 7;
     const dots = [[th.close, '×'], [th.min, '−'], [th.zoom, '+']];
     dots.forEach(([c, sym], i) => {
       const dx = win.x + 2 + i * 2;
-      if (over && focused) cv.text(dx, win.y, sym, 0x1a1a1a, c);
-      else cv.text(dx, win.y, '●', focused ? c : 0x6a6a72);
+      cv.disc(dx * pw + pw / 2, y0 + ph / 2, Math.max(2, ph * 0.3), focused ? c : 0x6a6a72);
+      if (over && focused) cv.text(dx, win.y, sym, 0x1a1a1a);
     });
     let title = win.def.name;
     try {
@@ -595,6 +632,9 @@ export class OS {
         { label: 'About TridOS', fn: () => this.aboutDialog() },
         { label: 'System Settings…', fn: () => this.openSettings() },
         { sep: true },
+        { label: 'Bigger Text   Alt +', fn: () => this.bumpText(1) },
+        { label: 'Smaller Text  Alt -', fn: () => this.bumpText(-1) },
+        { sep: true },
         { label: 'Shut Down…', fn: () => this.confirm('Shut Down', 'Your windows and settings are saved. Shut down TridOS?', 'Shut Down', () => this.shutdown()) },
       ],
     });
@@ -624,7 +664,7 @@ export class OS {
   aboutDialog() {
     this.dialog({
       title: 'About TridOS',
-      message: `TridOS 0.1\nA desktop for the terminal, drawn in ${MODES[this.cv.mode].label}.\nDisk: ${DISK}\nSize: ${this.cv.cols}x${this.cv.rows} cells, ${this.cv.W}x${this.cv.H} pixels, ${this.truecolor ? '24-bit' : '256'} colour.`,
+      message: `TridOS 0.1\nA desktop for the terminal, drawn in ${MODES[this.cv.mode].label}.\nDisk: ${DISK}\nScreen: ${this.cv.W}x${this.cv.H} pixels (${this.cv.tcols}x${this.cv.trows} terminal cells), text size ${this.cv.scale}x = ${this.cv.cols}x${this.cv.rows} text cells, ${this.truecolor ? '24-bit' : '256'} colour.`,
     });
   }
   openSettings() {
@@ -645,7 +685,6 @@ export class OS {
       const navOn = this.nav?.zone === 'menu' && this.nav.idx === i;
       const bg = open || navOn ? th.accent : -1;
       cv.text(x, MENU_ROW, ' ' + m.title + ' ', open || navOn ? 0xffffff : th.menuText, bg);
-      if (bg < 0) for (let k = 0; k < w; k++) cv.tbg[MENU_ROW * cv.cols + x + k] = -1;
       this.menuLayout.push({ x, w, m });
       this.hits.add(x, MENU_ROW, w, 1, () => this.toggleMenu(i), 'menu' + i);
       x += w;
@@ -694,7 +733,6 @@ export class OS {
       const sel = (hov && !it.disabled) || this.menu.item === i;
       if (sel) cv.cellFill(x + 1, y, w - 2, 1, th.accent);
       cv.text(x + 2, y, it.label, it.disabled ? th.dim : sel ? 0xffffff : th.menuText);
-      if (sel) cv.tbg[y * cv.cols + x + 1] = th.accent;
       hitsHere.push({ x, y, w, it });
     });
     this.menuBox = { x, y: 1, w, h, items: hitsHere };
@@ -709,65 +747,47 @@ export class OS {
   drawDock() {
     const cv = this.cv;
     const th = this.th;
-    const [ic, ir] = DOCK_SIZES[this.settings.dockSize] || DOCK_SIZES.medium;
     const items = this.dockItems();
-    const gap = 1;
-    const total = items.length * (ic + gap) - gap + 4;
-    const panelH = ir + 2;
-    const x = Math.floor((cv.cols - total) / 2);
-    const y = cv.rows - panelH - 1;
-    const { pw, ph } = cv;
-    const px = x * pw;
-    const py = y * ph;
-    const pwid = total * pw;
-    const phei = panelH * ph;
-    const spots = [];
-    const r = pw > 1 ? 3 : 1;
-    for (let j = 0; j < r; j++) for (let i = 0; i < r - j; i++) spots.push([i, j]);
-    const saved = [];
-    const corners = (fn) => {
-      for (const [i, j] of spots) {
-        fn(px + i, py + j);
-        fn(px + pwid - 1 - i, py + j);
-        fn(px + i, py + phei - 1 - j);
-        fn(px + pwid - 1 - i, py + phei - 1 - j);
-      }
-    };
-    corners((a, b) => saved.push(cv.get(a, b)));
-    cv.blendRect(px, py, pwid, phei, th.dockBg, 0.66);
-    cv.pxRect(px + r, py, pwid - 2 * r, 1, lighten(th.dockBg, th.dark ? 0.35 : 0.9));
-    let k = 0;
-    corners((a, b) => cv.px(a, b, saved[k++]));
-    cv.clearText(x, y, total, panelH);
+    const { S, pad, gap, w, h, x, y } = this.dockMetrics(items.length);
+    const { pw, ph, scale } = cv;
+    // a translucent rounded panel
+    const r = Math.round(S * 0.3);
+    const outside = cornerOutside(x, y, w, h, r);
+    const saved = outside.map(([a, b]) => cv.get(a, b));
+    cv.blendRect(x, y, w, h, th.dockBg, 0.66);
+    cv.pxRect(x + r, y, w - 2 * r, scale, lighten(th.dockBg, th.dark ? 0.35 : 0.9));
+    outside.forEach(([a, b], i) => cv.px(a, b, saved[i]));
     this.dockLayout = [];
-    let cx = x + 2;
+    const mx = this.ptr.x;
+    const my = this.ptr.y;
     items.forEach((def, i) => {
-      const running = this.windows.some((w) => w.def.id === def.id);
-      const hov = this.mouse.y >= y && this.mouse.y < y + panelH && this.mouse.x >= cx - 0 && this.mouse.x < cx + ic;
+      const ix = x + pad + i * (S + gap);
+      const hov = mx >= ix - gap / 2 && mx < ix + S + gap / 2 && my >= y && my < y + h;
       const navOn = this.nav?.zone === 'dock' && this.nav.idx === i;
-      const lift = hov ? 1 : 0;
-      const ix = cx * pw;
-      const iy = (y + 1) * ph - lift * 2;
-      drawIcon(cv, def.icon, ix, iy, ic * pw, ir * ph, { dim: hov ? 0 : 0.0 });
-      if (hov || navOn) cv.blendRect(ix, iy, ic * pw, ir * ph, 0xffffff, 0.12);
+      const iy = y + pad - (hov ? Math.round(S * 0.08) : 0);
+      drawIcon(cv, def.icon, ix, iy, S, S);
+      if (hov || navOn) cv.blendRect(ix, iy, S, S, 0xffffff, 0.12);
       if (navOn) {
         const c = th.accent;
-        cv.pxRect(ix - 1, iy - 1, ic * pw + 2, 1, c);
-        cv.pxRect(ix - 1, iy + ir * ph, ic * pw + 2, 1, c);
-        cv.pxRect(ix - 1, iy - 1, 1, ir * ph + 2, c);
-        cv.pxRect(ix + ic * pw, iy - 1, 1, ir * ph + 2, c);
+        cv.pxRect(ix - scale, iy - scale, S + 2 * scale, scale, c);
+        cv.pxRect(ix - scale, iy + S, S + 2 * scale, scale, c);
+        cv.pxRect(ix - scale, iy - scale, scale, S + 2 * scale, c);
+        cv.pxRect(ix + S, iy - scale, scale, S + 2 * scale, c);
       }
-      if (running && this.settings.dockIndicators) {
-        cv.pxRect(ix + Math.floor((ic * pw) / 2) - 1, (y + panelH) * ph - 2, 2, 1, th.dark ? 0xffffff : 0x333333);
+      if (this.windows.some((win) => win.def.id === def.id) && this.settings.dockIndicators) {
+        cv.pxRect(ix + Math.floor(S / 2) - scale, y + h - Math.round(S * 0.12) - scale, 2 * scale, 2 * scale, th.dark ? 0xffffff : 0x333333);
       }
-      this.dockLayout.push({ def, x: cx, y, w: ic, h: panelH });
-      this.hits.add(cx, y, ic, panelH, () => this.dockClick(def), 'dock' + def.id);
+      // the click area, in text cells
+      const cx0 = Math.floor((ix - gap / 2) / pw);
+      const cx1 = Math.ceil((ix + S + gap / 2) / pw);
+      const cy0 = Math.floor(y / ph);
+      this.dockLayout.push({ def, x: cx0, y: cy0, w: cx1 - cx0, h: cv.rows - cy0 });
+      this.hits.add(cx0, cy0, cx1 - cx0, cv.rows - cy0, () => this.dockClick(def), 'dock' + def.id);
       if (hov || navOn) {
         const label = ' ' + def.name + ' ';
-        const lx = clamp(cx + Math.floor((ic - len(label)) / 2), 0, cv.cols - len(label));
-        cv.text(lx, y - 2, label, th.dark ? 0xf2f2f7 : 0xffffff, th.dark ? 0x38383f : 0x3c3c43);
+        const lx = clamp(Math.round((ix + S / 2) / pw - len(label) / 2), 0, cv.cols - len(label));
+        cv.text(lx, cy0 - 2, label, th.dark ? 0xf2f2f7 : 0xffffff, th.dark ? 0x38383f : 0x3c3c43);
       }
-      cx += ic + gap;
     });
   }
   dockClick(def) {
@@ -835,9 +855,7 @@ export class OS {
   }
   drawCursor() {
     const cv = this.cv;
-    const mx = this.mouse.x;
-    const my = this.mouse.y;
-    if (mx < 0 || my < 0) return;
+    if (this.ptr.x < 0 || this.ptr.y < 0) return;
     const ARROW = [
       '1.....',
       '11....',
@@ -850,22 +868,13 @@ export class OS {
       '..121.',
       '...11.',
     ];
-    const ox = mx * cv.pw;
-    const oy = my * cv.ph;
-    const covered = new Set();
+    const s = cv.scale; // the pointer grows with the text
     ARROW.forEach((row, j) => {
       for (let i = 0; i < row.length; i++) {
         const c = row[i];
-        if (c === '.') continue;
-        cv.px(ox + i, oy + j, c === '1' ? 0x000000 : 0xffffff);
-        covered.add(`${mx + Math.floor(i / cv.pw)},${my + Math.floor(j / cv.ph)}`);
+        if (c !== '.') cv.pxRect(this.ptr.x + i * s, this.ptr.y + j * s, s, s, c === '1' ? 0x000000 : 0xffffff);
       }
     });
-    // text under the pointer would hide it, so clear just the cells it touches
-    for (const s of covered) {
-      const [cx, cy] = s.split(',').map(Number);
-      cv.clearText(cx, cy, 1, 1);
-    }
   }
 
   // ---------- input ----------
@@ -893,6 +902,8 @@ export class OS {
   onKey(e) {
     if (this.modal) return this.modalKey(e);
     if (e.ctrl && e.key === 'q') return this.confirm('Shut Down', 'Your windows and settings are saved. Shut down TridOS?', 'Shut Down', () => this.shutdown());
+    if (e.alt && (e.key === '=' || e.key === '+')) return this.bumpText(1);
+    if (e.alt && (e.key === '-' || e.key === '_')) return this.bumpText(-1);
     if (this.nav) return this.navKey(e);
     if (this.menu) {
       if (e.key === 'escape') this.menu = null;
@@ -1028,6 +1039,13 @@ export class OS {
   }
 
   onMouse(e) {
+    // the terminal reports a character cell; the pointer sits at that cell's corner, in pixels, and the text cell under it is what we hit
+    const cv = this.cv;
+    const px = e.x * cv.tpw;
+    const py = e.y * cv.tph;
+    this.ptr.x = px;
+    this.ptr.y = py;
+    e = { ...e, x: Math.floor(px / cv.pw), y: Math.floor(py / cv.ph), px, py };
     this.mouse.x = e.x;
     this.mouse.y = e.y;
     if (e.kind === 'move') return;
@@ -1129,8 +1147,19 @@ export class OS {
   }
   sendMouse(w, e) {
     if (!w.app?.mouse) return;
-    w.app.mouse({ ...e, x: e.x - w.x, y: e.y - w.y - 1 });
+    // x, y: text cells in the window; px, py: pixels in the window (for smooth dragging)
+    w.app.mouse({ ...e, x: e.x - w.x, y: e.y - w.y - 1, px: e.px - w.x * this.cv.pw, py: e.py - (w.y + 1) * this.cv.ph });
   }
+}
+
+// The pixels in the four corners of a w x h rectangle at (x0, y0) that a corner of radius r rounds off.
+function cornerOutside(x0, y0, w, h, r) {
+  const out = [];
+  const corners = [[x0, y0, x0 + r, y0 + r], [x0 + w - r, y0, x0 + w - r, y0 + r], [x0, y0 + h - r, x0 + r, y0 + h - r], [x0 + w - r, y0 + h - r, x0 + w - r, y0 + h - r]];
+  for (const [sx, sy, cx, cy] of corners) {
+    for (let y = sy; y < sy + r; y++) for (let x = sx; x < sx + r; x++) if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 > r * r) out.push([x, y]);
+  }
+  return out;
 }
 
 // Node's require for apps that need fs, path, os or child_process.

@@ -231,7 +231,21 @@ export function wallpaper(id, W, H) {
   const key = `${id}:${W}x${H}`;
   if (!cache.has(key)) {
     if (cache.size > 6) cache.clear();
-    cache.set(key, (WALLPAPERS[id] || WALLPAPERS.waves).make(W, H));
+    const gen = (WALLPAPERS[id] || WALLPAPERS.waves).make;
+    // a big screen is made at a lower resolution and enlarged (fast, and a little chunkier, like the rest of the pixels)
+    const k = Math.max(1, Math.ceil(Math.sqrt((W * H) / 300000)));
+    if (k === 1) cache.set(key, gen(W, H));
+    else {
+      const gw = Math.ceil(W / k);
+      const gh = Math.ceil(H / k);
+      const small = gen(gw, gh);
+      const big = new Uint32Array(W * H);
+      for (let y = 0; y < H; y++) {
+        const row = Math.floor(y / k) * gw;
+        for (let x = 0; x < W; x++) big[y * W + x] = small[row + Math.floor(x / k)];
+      }
+      cache.set(key, big);
+    }
   }
   return cache.get(key);
 }

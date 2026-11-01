@@ -185,7 +185,7 @@ class Terminal {
             `  OS      TridOS 0.1`,
             `  Host    ${os_.hostname()}`,
             `  Shell   TridOS Terminal`,
-            `  Screen  ${cv.cols}x${cv.rows} cells, ${cv.W}x${cv.H} pixels`,
+            `  Screen  ${cv.W}x${cv.H} pixels, text ${cv.scale}x (${cv.cols}x${cv.rows})`,
             `  Pixels  ${cv.mode}`,
             `  Colour  ${os.truecolor ? '24-bit' : '256'}`,
             `  Apps    ${os.installed.length} installed`,
