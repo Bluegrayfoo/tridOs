@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# The tridos command. Works from a symlink, from the project folder, or installed by tlib.
+set -e
+SRC="${BASH_SOURCE[0]}"
+while [ -L "$SRC" ]; do
+  DIR="$(cd "$(dirname "$SRC")" && pwd)"
+  SRC="$(readlink "$SRC")"
+  [[ "$SRC" != /* ]] && SRC="$DIR/$SRC"
+done
+HERE="$(cd "$(dirname "$SRC")" && pwd)"
+ROOT="$HERE/.."
+if [ ! -f "$ROOT/src/main.js" ]; then
+  ROOT="$(find "$HOME/.tlib/repos/knittingCat" -maxdepth 2 -type d \( -name tridOs -o -name TridOS -o -name tridos \) 2>/dev/null | head -1)"
+fi
+if [ -z "$ROOT" ] || [ ! -f "$ROOT/src/main.js" ]; then
+  echo "tridos: could not find the TridOS files (src/main.js)" >&2
+  exit 1
+fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "tridos: needs Node.js (https://nodejs.org)" >&2
+  exit 1
+fi
+exec node "$ROOT/src/main.js" "$@"

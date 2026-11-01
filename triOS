@@ -1,0 +1,118 @@
+#!/bin/zsh
+
+# os_sim.zsh - The Operating System Simulator
+
+# Function to clear screen and set up display mode
+setup_display() {
+    # Simulate fullscreen and low-res terminal environment
+    tput clear
+    tput civise # Hide cursor
+    # Setting a background color/mode for the simulation
+    echo -e "\033[48;5;238m" 
+}
+
+# Function to draw a pixelated character/line
+draw_pixel() {
+    local char="$1"
+    # In a real implementation, this would handle scaling/3pt rendering
+    echo -n "$char"
+}
+
+# Function to handle App Store interactions
+app_store() {
+    echo ""
+    echo "=================================================="
+    echo "               SAGE APP STORE"
+    echo "=================================================="
+    echo "Available Apps:"
+    echo "1) Native Graphing Engine (v0.9)"
+    echo "2) Text Editor (v0.1)"
+    echo "3) Back to OS Main Menu"
+    echo "--------------------------------------------------"
+    echo -n "Select App to Install/Run: "
+    read -r app_select
+
+    case "$app_select" in
+        1)
+            echo "-> Installing and launching Native Graphing Engine..."
+            # Simulate installation/launch sequence
+            echo "Loading visualization kernel..."
+            # Placeholder for graphing app execution
+            graphing_app_test
+            ;;
+        2)
+            echo "-> Launching Text Editor..."
+            # Text editor logic goes here
+            ;;
+        3)
+            return # Return to main menu
+            ;;
+        *)
+            echo "Invalid selection."
+            ;;
+    esac
+}
+
+# Placeholder function for the graphing app test
+graphing_app_test() {
+    echo ""
+    echo "=================================================="
+    echo "        NATIVE GRAPHING ENGINE v0.9"
+    echo "=================================================="
+    echo "--- Test Run: Sine Wave Simulation ---"
+    echo "X-Axis (0-10):"
+    echo "Y-Axis (0-10):"
+    
+    # Simulate a simple plot using characters (low-res pixel style)
+    for i in {1..10}; do
+        # Simulate plotting a point based on input 'i'
+        # Example: Plotting a sine wave approximation
+        y_val=$(echo "scale=0; 5 + 5 * s(scale(1, $i/10, 0.1))" | bc)
+        printf "%3d " "$i"
+        echo -n "-> [%s]" "$y_val"
+    done
+    echo ""
+    echo "--- Simulation Complete ---"
+}
+
+
+# Main OS loop
+main_loop() {
+    setup_display
+
+    while true; do
+        # Display the main menu/prompt
+        echo ""
+        echo "=================================================="
+        echo "        SAGE OS v0.1 - Welcome Back"
+        echo "=================================================="
+        echo "Select an application or command:"
+        echo "1) App Store (Download Apps)"
+        echo "2) System Info"
+        echo "3) Shutdown"
+        echo "--------------------------------------------------"
+        echo -n ">> "
+        read -r input
+
+        case "$input" in
+            1)
+                app_store # Call the app store function
+                ;;
+            2)
+                echo "Displaying System Information..."
+                # System info logic goes here
+                ;;
+            3)
+                echo "Shutting down OS simulation..."
+                break
+                ;;
+            *)
+                echo "Unknown command. Try again."
+                ;;
+        esac
+        echo "" # Newline after command execution
+    done
+}
+
+# Execute the main loop
+main_loop

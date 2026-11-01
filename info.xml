@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tlib version="1">
+  <package name="tridos" version="0.1.0">
+    <requires>
+      <tool name="node"/>
+    </requires>
+    <commands>
+      <command name="tridos" language="shell" source="bin/tridos"/>
+    </commands>
+  </package>
+</tlib>
