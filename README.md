@@ -5,6 +5,28 @@ A fullscreen desktop for your terminal, drawn in pixels made from block characte
 older block characters that fill the gaps in those ranges. It looks like a Mac desktop: a menu bar,
 a Dock, windows with traffic lights and shadows, wallpapers, light and dark themes.
 
+## Install
+
+With [tlib](https://github.com/BlueGrayFoo/TLIB):
+
+```
+tlib install knittingCat/tridOs
+tridos
+```
+
+Without tlib (needs [Node.js](https://nodejs.org) 18 or newer, nothing else):
+
+```
+git clone https://github.com/knittingCat/tridOs.git
+cd tridOs
+./bin/tridos
+```
+
+To get a `tridos` command anywhere, link it onto your PATH: `ln -s "$PWD/bin/tridos" ~/.local/bin/tridos`
+(or any folder on your PATH). To update: `tlib update knittingCat/tridOs`, or `git pull`.
+
+## Run
+
 ```
 tridos              start it (a big or full-screen terminal window is best: Ctrl+Cmd+F)
 tridos --glyphs     check that your font draws the block characters
