@@ -1,20 +1,21 @@
-// App Distributor: send your apps to anyone with TridOS, and install apps other people sent you.
-//   Share:     make an app code (paste it in a message), a .tridapp file, or a public link (a GitHub gist, through the gh command)
-//   Get apps:  paste a link or a code, or open a .tridapp file. You read the source before anything is installed.
-//   Published: the links you made, with a way to take them down.
-// Apps from other people are checked and fenced (see pack.js and sandbox.js), but they are still code: install only from people you trust.
+// App Distributor: share your apps with everyone who has TridOS, and install theirs.
+//   Share:      publish an app to the TridOS catalog (the apps/ folder of the tridOs repo on GitHub), or copy its code / save a file
+//   Catalog:    browse the apps in that folder and install one
+//   Get apps:   install from a link, an app code or a .tridapp file someone sent you
+//   Published:  what you published, with a way to take it back
+// Apps from other people are checked and fenced (see pack.js and sandbox.js), but they are still code: you read the source first.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { Hits, LineInput, TextArea, button } from '../ui.js';
 import { APPS_DIR, DISK, PUBLISHED_FILE } from '../fs.js';
 import { makePackage, encodePackage, decodePackage, scanSource, PREFIX } from '../pack.js';
-import { copyText, pasteText, fetchText, publishGist, deleteGist, run } from '../net.js';
+import { copyText, pasteText, fetchText, fetchCatalog, publishToCatalog, removeFromCatalog, catalogRepo, catalogUrl, run } from '../net.js';
 import { drawIcon } from '../icons.js';
-import { clamp, fit, len, mix } from '../util.js';
+import { clamp, fit, mix } from '../util.js';
 
 const SIDE = 18;
-const TABS = [['share', 'Share'], ['get', 'Get apps'], ['published', 'Published']];
+const TABS = [['share', 'Share'], ['catalog', 'Catalog'], ['get', 'Get apps'], ['published', 'Published']];
 
 function loadPublished() {
   try {
@@ -30,29 +31,29 @@ const savePublished = (list) => {
   } catch {}
 };
 const kb = (n) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`);
+const openLink = (url) => run(process.platform === 'darwin' ? 'open' : 'xdg-open', [url]);
 
 class Distributor {
   constructor(os, win, data) {
     this.os = os;
     this.win = win;
     this.tab = data?.tab || 'share';
-    this.sel = { share: 0, get: 0, published: 0 };
+    this.sel = { share: 0, catalog: 0, get: 0, published: 0 };
     this.input = new LineInput('');
     this.hits = new Hits();
     this.status = { t: '', k: '' };
     this.busy = '';
     this.review = null;
     this.published = loadPublished();
-    this.alive = true;
+    this.catalog = null; // [{ pkg, url }] once loaded
+    this.catalogError = '';
+    if (this.tab === 'catalog') this.loadCatalog();
   }
   save() {
     return { tab: this.tab };
   }
   title() {
     return 'App Distributor';
-  }
-  close() {
-    this.alive = false;
   }
   say(t, k = '') {
     this.status = { t, k };
@@ -61,6 +62,7 @@ class Distributor {
   go(tab) {
     this.tab = tab;
     this.review = null;
+    if (tab === 'catalog' && !this.catalog && !this.busy) this.loadCatalog();
     this.os.dirty = true;
   }
 
@@ -75,10 +77,31 @@ class Distributor {
       .filter((d) => d.external)
       .sort((a, b) => a.name.localeCompare(b.name));
   }
+  listFor(tab) {
+    return tab === 'share' ? this.myApps() : tab === 'catalog' ? this.catalog || [] : tab === 'get' ? this.installedFromOthers() : this.published;
+  }
   current(tab = this.tab) {
-    const list = tab === 'share' ? this.myApps() : tab === 'get' ? this.installedFromOthers() : this.published;
+    const list = this.listFor(tab);
     this.sel[tab] = clamp(this.sel[tab], 0, Math.max(0, list.length - 1));
     return list[this.sel[tab]] || null;
+  }
+
+  // ----- the catalog -----
+  async loadCatalog() {
+    this.busy = 'Loading the catalog…';
+    this.catalogError = '';
+    this.os.dirty = true;
+    try {
+      this.catalog = (await fetchCatalog(decodePackage)).sort((a, b) => a.pkg.name.localeCompare(b.pkg.name));
+    } catch (e) {
+      this.catalogError = e.message;
+      this.catalog = [];
+    }
+    this.busy = '';
+    this.os.dirty = true;
+  }
+  reviewCatalog(item) {
+    if (item) this.openReview(item.pkg, `the TridOS catalog (${item.url})`);
   }
 
   // ----- sharing -----
@@ -142,19 +165,21 @@ class Distributor {
       const pkg = this.packageFor(def);
       if (!pkg) return;
       this.os.dialog({
-        title: 'Publish to GitHub',
-        message: `This makes a PUBLIC GitHub gist of "${pkg.name}" on your GitHub account (using the gh command). Anyone with the link can read and install it. You can delete it later in Published.`,
+        title: 'Publish to the TridOS catalog',
+        message: `This adds "${pkg.name}" v${pkg.version} to the apps folder of ${catalogRepo()} on GitHub, as ${this.os.settings.author}, using your GitHub account (the gh command). If you can edit that repo it goes straight in; otherwise it is sent as a pull request that the owner reads before it appears. Everything in it is public.`,
         buttons: [{ label: 'Cancel', cancel: true }, { label: 'Publish', primary: true }],
         onDone: async (i) => {
           if (i !== 1) return;
           this.busy = 'Publishing…';
           this.os.dirty = true;
           try {
-            const { url, id } = await publishGist(encodePackage(pkg), `${pkg.id}.tridapp`, `TridOS app: ${pkg.name} v${pkg.version}`);
-            this.published.unshift({ id, url, name: pkg.name, version: pkg.version, appId: pkg.id, date: new Date().toISOString() });
+            const { mode, url } = await publishToCatalog(encodePackage(pkg), pkg);
+            this.published = this.published.filter((r) => r.appId !== pkg.id);
+            this.published.unshift({ appId: pkg.id, name: pkg.name, version: pkg.version, mode, url, date: new Date().toISOString() });
             savePublished(this.published);
-            const copied = await copyText(url);
-            this.say(`Published. ${copied ? 'The link is on your clipboard: ' : 'Link: '}${url}`, 'ok');
+            await copyText(url);
+            this.catalog = null;
+            this.say(mode === 'direct' ? `Published. It is in the catalog now. Link on your clipboard: ${url}` : `Sent for review as a pull request. It appears in the catalog once the owner merges it. Link on your clipboard: ${url}`, 'ok');
           } catch (e) {
             this.say(e.message, 'err');
           }
@@ -165,16 +190,23 @@ class Distributor {
     });
   }
   unpublish(rec) {
-    this.os.confirm('Delete the link', `Delete the GitHub gist for "${rec.name}"? The link stops working for everyone.`, 'Delete', async () => {
-      this.busy = 'Deleting…';
-      try {
-        await deleteGist(rec.id);
-        this.say(`Deleted the link for ${rec.name}.`, 'ok');
-      } catch (e) {
-        this.say(`${e.message} (It is removed from this list anyway.)`, 'err');
-      }
+    if (rec.mode !== 'direct') {
       this.published = this.published.filter((r) => r !== rec);
       savePublished(this.published);
+      return this.say('Removed it from this list. A pull request is closed on GitHub, in the link.', 'ok');
+    }
+    this.os.confirm('Remove from the catalog', `Delete "${rec.name}" from the TridOS catalog? Nobody can install it from there any more.`, 'Remove', async () => {
+      this.busy = 'Removing…';
+      this.os.dirty = true;
+      try {
+        await removeFromCatalog(rec.appId);
+        this.say(`Removed ${rec.name} from the catalog.`, 'ok');
+        this.published = this.published.filter((r) => r !== rec);
+        savePublished(this.published);
+        this.catalog = null;
+      } catch (e) {
+        this.say(e.message, 'err');
+      }
       this.busy = '';
       this.os.dirty = true;
     }, true);
@@ -197,8 +229,7 @@ class Distributor {
       else if (/^https?:\/\//i.test(text)) {
         this.busy = 'Downloading…';
         this.os.dirty = true;
-        const body = await fetchText(text);
-        pkg = decodePackage(body);
+        pkg = decodePackage(await fetchText(text));
         source = text;
       } else throw new Error('Paste a link (https://…) or an app code (it starts with TRIDAPP1.).');
       this.openReview(pkg, source);
@@ -247,7 +278,9 @@ class Distributor {
   }
 
   menus() {
-    return [{ title: 'Distribute', items: TABS.map(([id, label]) => ({ label, fn: () => this.go(id) })) }];
+    return [
+      { title: 'Distribute', items: [...TABS.map(([id, label]) => ({ label, fn: () => this.go(id) })), { sep: true }, { label: 'Refresh Catalog', fn: () => this.loadCatalog() }, { label: 'Open Catalog on GitHub', fn: () => openLink(catalogUrl()) }] },
+    ];
   }
 
   // ----- drawing -----
@@ -268,7 +301,8 @@ class Distributor {
     v.text(2, v.h - 3, 'Tab: next page', th.dim);
     const x0 = SIDE + 2;
     const w = v.w - x0 - 2;
-    if (this.tab === 'share') this.drawShare(v, x0, w, focused);
+    if (this.tab === 'share') this.drawShare(v, x0, w);
+    else if (this.tab === 'catalog') this.drawCatalog(v, x0, w);
     else if (this.tab === 'get') this.drawGet(v, x0, w, focused);
     else this.drawPublished(v, x0, w);
     const s = this.busy ? { t: this.busy, k: '' } : this.status;
@@ -282,19 +316,19 @@ class Distributor {
     lines.forEach((l, i) => v.text(SIDE + 1, v.h - 2 + i, l, color));
   }
 
-  appRow(v, x, y, def, on, onClick) {
+  appRow(v, x, y, icon, line1, line2, on, onClick) {
     const th = this.os.th;
     if (on) v.rect(x - 1, y, v.w - x - 1, 3, mix(th.bg, th.accent, 0.14));
-    drawIcon(v.cv, def.icon, (v.x + x) * v.pw, (v.y + y) * v.ph, 3 * v.pw, 2 * v.ph);
-    v.text(x + 4, y, fit(def.name + (def.version ? `  v${def.version}` : ''), 36), th.text);
-    v.text(x + 4, y + 1, fit(def.desc || '', v.w - x - 8), th.dim);
-    this.hits.add(x - 1, y, v.w - x, 3, onClick);
+    drawIcon(v.cv, icon, (v.x + x) * v.pw, (v.y + y) * v.ph, 3 * v.pw, 2 * v.ph);
+    v.text(x + 4, y, fit(line1, v.w - x - 20), th.text);
+    v.text(x + 4, y + 1, fit(line2, v.w - x - 20), th.dim);
+    this.hits.add(x - 1, y, v.w - x - 16, 3, onClick);
   }
 
-  drawShare(v, x0, w, focused) {
+  drawShare(v, x0, w) {
     const th = this.os.th;
     v.text(x0, 1, 'Share your apps', th.text);
-    v.text(x0, 2, fit('Send an app to anyone with TridOS: as a code, a file or a link.', w), th.dim);
+    v.text(x0, 2, fit(`Put an app in the TridOS catalog (${catalogRepo()}), or send it as a code or a file.`, w), th.dim);
     const apps = this.myApps();
     const sel = this.current();
     if (!apps.length) {
@@ -304,8 +338,7 @@ class Distributor {
     }
     const rows = Math.max(1, Math.floor((v.h - 14) / 3));
     const first = clamp(this.sel.share - rows + 1, 0, Math.max(0, apps.length - rows));
-    apps.slice(first, first + rows).forEach((def, k) => this.appRow(v, x0, 4 + k * 3, def, first + k === this.sel.share, () => (this.sel.share = first + k)));
-    // the chosen app
+    apps.slice(first, first + rows).forEach((def, k) => this.appRow(v, x0, 4 + k * 3, def.icon, `${def.name}  v${def.version}`, def.desc || '', first + k === this.sel.share, () => (this.sel.share = first + k)));
     const y = v.h - 9;
     for (let x = x0; x < v.w - 2; x++) v.text(x, y - 1, '─', th.line);
     if (!sel) return;
@@ -318,13 +351,37 @@ class Distributor {
     if (bad.length) {
       v.text(x0, y + 1, fit(`Cannot share yet: it uses ${bad[0].what} (line ${bad[0].line}).`, w), th.danger);
       v.text(x0, y + 2, fit('Apps from other people may not use that, so their TridOS would refuse it.', w), th.dim);
-    } else v.text(x0, y + 1, fit('Others see its source before they install it. Version comes from  version: "1.0.0"  in the app.', w), th.dim);
+    } else v.text(x0, y + 1, fit('People read its source before they install it. Its version comes from  version: "1.0.0"  in the app.', w), th.dim);
     let x = x0;
-    x += button(v, this.hits, x, y + 4, 'Publish link', th, () => this.publish(sel), { primary: !bad.length }) + 1;
+    x += button(v, this.hits, x, y + 4, 'Publish to catalog', th, () => this.publish(sel), { primary: !bad.length }) + 1;
     x += button(v, this.hits, x, y + 4, 'Copy code', th, () => this.copyCode(sel)) + 1;
     x += button(v, this.hits, x, y + 4, 'Save file', th, () => this.saveFile(sel)) + 1;
     if (this.lastFile) button(v, this.hits, x, y + 4, 'Show file', th, () => this.reveal());
     v.text(x0, y + 5, 'Keys: p publish, c copy code, s save file, Up/Down choose', th.dim);
+  }
+
+  drawCatalog(v, x0, w) {
+    const th = this.os.th;
+    v.text(x0, 1, 'TridOS catalog', th.text);
+    v.text(x0, 2, fit(`Apps people published in the apps folder of ${catalogRepo()}.`, w), th.dim);
+    button(v, this.hits, v.w - 12, 1, 'Refresh', th, () => this.loadCatalog(), { width: 10 });
+    if (!this.catalog) return void v.text(x0, 5, this.busy || 'Opening the catalog…', th.dim);
+    if (this.catalogError) {
+      v.text(x0, 5, fit(`Could not load the catalog: ${this.catalogError}`, w), th.danger);
+      return void v.text(x0, 6, 'Are you online? Press Refresh to try again.', th.dim);
+    }
+    if (!this.catalog.length) return void v.text(x0, 5, 'The catalog is empty. Be the first: Share → Publish to catalog.', th.dim);
+    const rows = Math.max(1, Math.floor((v.h - 7) / 3));
+    const first = clamp(this.sel.catalog - rows + 1, 0, Math.max(0, this.catalog.length - rows));
+    this.catalog.slice(first, first + rows).forEach((item, k) => {
+      const p = item.pkg;
+      const y = 4 + k * 3;
+      const have = this.os.userApps[`community:${p.id}.js`];
+      this.appRow(v, x0, y, p.icon, `${p.name}  v${p.version}  ·  by ${p.author || 'someone'}`, p.desc || '', first + k === this.sel.catalog, () => (this.sel.catalog = first + k));
+      const label = !have ? 'Review' : have.version === p.version ? 'Installed' : 'Update';
+      button(v, this.hits, v.w - 14, y, label, th, () => ((this.sel.catalog = first + k), this.reviewCatalog(item)), { primary: !have || have.version !== p.version, width: 12 });
+    });
+    v.text(x0, v.h - 4, 'Enter: review the selected app, then install it', th.dim);
   }
 
   drawGet(v, x0, w, focused) {
@@ -337,7 +394,7 @@ class Distributor {
     x += button(v, this.hits, x, 4, 'Paste', th, () => this.pasteIn()) + 1;
     button(v, this.hits, x, 4, 'Get', th, () => this.get(), { primary: true });
     v.text(x0, 6, 'You can also open a .tridapp file from Finder or the Desktop.', th.dim);
-    v.text(x0, 7, 'You will read the app\'s source and approve it before anything is installed.', th.dim);
+    v.text(x0, 7, "You will read the app's source and approve it before anything is installed.", th.dim);
     v.text(x0, 9, 'Installed from other people', th.text);
     const list = this.installedFromOthers();
     if (!list.length) v.text(x0, 11, 'Nothing yet.', th.dim);
@@ -345,7 +402,7 @@ class Distributor {
     const first = clamp(this.sel.get - rows + 1, 0, Math.max(0, list.length - rows));
     list.slice(first, first + rows).forEach((def, k) => {
       const y = 11 + k * 3;
-      this.appRow(v, x0, y, { ...def, desc: `by ${def.author || 'someone'}${def.source ? '  ·  ' + def.source : ''}` }, first + k === this.sel.get, () => (this.sel.get = first + k));
+      this.appRow(v, x0, y, def.icon, `${def.name}  v${def.version}`, `by ${def.author || 'someone'}${def.source ? '  ·  ' + def.source : ''}`, first + k === this.sel.get, () => (this.sel.get = first + k));
       button(v, this.hits, v.w - 12, y, 'Remove', th, () => this.removeApp(def), { danger: true });
     });
   }
@@ -353,15 +410,15 @@ class Distributor {
   drawPublished(v, x0, w) {
     const th = this.os.th;
     v.text(x0, 1, 'Published', th.text);
-    v.text(x0, 2, 'The public links you made. Anyone with a link can install the app.', th.dim);
-    if (!this.published.length) v.text(x0, 5, 'Nothing published yet. Share → Publish link.', th.dim);
+    v.text(x0, 2, 'What you put in the catalog.', th.dim);
+    if (!this.published.length) v.text(x0, 5, 'Nothing published yet. Share → Publish to catalog.', th.dim);
     const rows = Math.max(1, Math.floor((v.h - 10) / 3));
     const first = clamp(this.sel.published - rows + 1, 0, Math.max(0, this.published.length - rows));
     this.published.slice(first, first + rows).forEach((rec, k) => {
       const y = 4 + k * 3;
       const on = first + k === this.sel.published;
       if (on) v.rect(x0 - 1, y, v.w - x0 - 1, 3, mix(th.bg, th.accent, 0.14));
-      v.text(x0, y, fit(`${rec.name}  v${rec.version}  ·  ${String(rec.date).slice(0, 10)}`, w), th.text);
+      v.text(x0, y, fit(`${rec.name}  v${rec.version}  ·  ${String(rec.date).slice(0, 10)}  ·  ${rec.mode === 'direct' ? 'in the catalog' : 'waiting for the owner (pull request)'}`, w), th.text);
       v.text(x0, y + 1, fit(rec.url, w), th.accent);
       this.hits.add(x0 - 1, y, v.w - x0, 3, () => (this.sel.published = first + k));
     });
@@ -369,7 +426,8 @@ class Distributor {
     if (rec) {
       let x = x0;
       x += button(v, this.hits, x, v.h - 5, 'Copy link', th, async () => this.say((await copyText(rec.url)) ? 'Copied the link.' : 'Could not use the clipboard here.', 'ok')) + 1;
-      button(v, this.hits, x, v.h - 5, 'Delete link…', th, () => this.unpublish(rec), { danger: true });
+      x += button(v, this.hits, x, v.h - 5, 'Open in browser', th, () => openLink(rec.url)) + 1;
+      button(v, this.hits, x, v.h - 5, rec.mode === 'direct' ? 'Remove from catalog…' : 'Forget', th, () => this.unpublish(rec), { danger: rec.mode === 'direct' });
     }
   }
 
@@ -396,7 +454,6 @@ class Distributor {
     button(v, this.hits, v.w - 13, by, r.findings.length ? 'Cannot install' : 'Install', th, () => this.install(), { primary: !r.findings.length, width: 12 });
     button(v, this.hits, v.w - 23, by, 'Cancel', th, () => ((this.review = null), (this.os.dirty = true)), { width: 9 });
     v.text(2, by, 'Up/Down scroll   Enter install   Esc cancel', th.dim);
-    this.reviewSrc = { y: y + 1, h: bottom - y - 1 };
   }
 
   // ----- input -----
@@ -417,7 +474,7 @@ class Distributor {
       this.go(TABS[(i + (e.shift ? TABS.length - 1 : 1)) % TABS.length][0]);
       return true;
     }
-    const list = this.tab === 'share' ? this.myApps() : this.tab === 'get' ? this.installedFromOthers() : this.published;
+    const list = this.listFor(this.tab);
     if (k === 'up') return (this.sel[this.tab] = Math.max(0, this.sel[this.tab] - 1)), true;
     if (k === 'down') return (this.sel[this.tab] = Math.min(Math.max(0, list.length - 1), this.sel[this.tab] + 1)), true;
     if (this.tab === 'get') {
@@ -427,6 +484,10 @@ class Distributor {
       return this.input.key(e);
     }
     const cur = this.current();
+    if (this.tab === 'catalog') {
+      if (k === 'enter' && cur) return this.reviewCatalog(cur), true;
+      if (k === 'r' && !e.ctrl) return this.loadCatalog(), true;
+    }
     if (this.tab === 'share' && cur && !e.ctrl) {
       if (k === 'p') return this.publish(cur), true;
       if (k === 'c') return this.copyCode(cur), true;
@@ -440,9 +501,8 @@ class Distributor {
   }
   mouse(e) {
     if (e.kind === 'wheel') {
-      if (this.review) {
-        this.review.ta.wheel(e.dir);
-      } else this.sel[this.tab] = Math.max(0, this.sel[this.tab] + e.dir);
+      if (this.review) this.review.ta.wheel(e.dir);
+      else this.sel[this.tab] = Math.max(0, this.sel[this.tab] + e.dir);
       return;
     }
     if (e.kind === 'down' && e.button === 0) this.hits.click(e.x, e.y);
@@ -452,9 +512,9 @@ class Distributor {
 export default {
   id: 'distributor',
   name: 'App Distributor',
-  desc: 'Share your apps with anyone who has TridOS, and install theirs.',
+  desc: 'Share apps through the TridOS catalog and install other people\'s.',
   icon: 'distributor',
-  size: [88, 28],
+  size: [90, 28],
   minSize: [60, 18],
   create: (os, win, data) => new Distributor(os, win, data),
 };

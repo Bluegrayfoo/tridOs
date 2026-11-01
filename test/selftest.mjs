@@ -26,6 +26,10 @@ async function test(name, fn) {
   }
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const until = async (fn, ms = 8000) => {
+  const end = Date.now() + ms;
+  while (!fn() && Date.now() < end) await sleep(25);
+};
 const screen = (os) => {
   os.draw();
   return textLayer(os.cv);
@@ -727,41 +731,175 @@ await test('links: https downloads and GitHub gist pages; other schemes and huge
   server.close();
 });
 
-await test('publishing: asks first, uses gh to make a public gist, remembers the link, and can delete it', async () => {
-  const bin = path.join(path.dirname(home), 'bin');
-  fs.mkdirSync(bin, { recursive: true });
-  const log = path.join(bin, 'gh.log');
-  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\necho "$@" >> "${log}"\nif [ "$1 $2" = "gist create" ]; then echo "https://gist.github.com/sam/abc123def4567890"; exit 0; fi\nif [ "$1 $2" = "gist delete" ]; then exit 0; fi\nexit 1\n`, { mode: 0o755 });
-  process.env.TRIDOS_GH = path.join(bin, 'gh');
+// A stand-in for the gh command that behaves like the GitHub API: a repo you can edit (direct) or one you cannot (fork + pull request).
+const ghStub = (dir) => {
+  const log = path.join(dir, 'gh.log');
+  const file = path.join(dir, 'gh');
+  fs.writeFileSync(
+    file,
+    `#!/usr/bin/env node
+const fs = require('fs');
+const a = process.argv.slice(2);
+let body = '';
+try { body = fs.readFileSync(0, 'utf8'); } catch {}
+let shown = body;
+try { const j = JSON.parse(body); if (j.content) j.content = '...'; shown = JSON.stringify(j); } catch {}
+fs.appendFileSync(${JSON.stringify(log)}, a.join(' ') + (body ? ' <<' + shown : '') + '\\n');
+const out = (o) => { process.stdout.write(JSON.stringify(o)); process.exit(0); };
+const fail = (code, msg) => { process.stderr.write('gh: ' + msg + ' (HTTP ' + code + ')'); process.exit(1); };
+if (a[0] !== 'api') fail(1, 'only api');
+const method = a.includes('-X') ? a[a.indexOf('-X') + 1] : 'GET';
+const p = a.find((x, i) => i > 0 && !x.startsWith('-') && a[i - 1] !== '-X' && a[i - 1] !== '--input');
+const mode = process.env.STUB_MODE || 'direct';
+if (p === 'user') out({ login: 'sam' });
+if (p.startsWith('repos/knittingCat/tridOs/contents/')) {
+  if (method === 'GET') { if (process.env.STUB_EXISTS) out({ sha: 'oldsha' }); fail(404, 'Not Found'); }
+  if (method === 'PUT') { if (mode === 'pr') fail(403, 'Resource not accessible'); out({ content: { html_url: 'https://github.com/knittingCat/tridOs/blob/main/apps/x.tridapp' } }); }
+  if (method === 'DELETE') out({});
+}
+if (p === 'repos/knittingCat/tridOs/forks') out({ full_name: 'sam/tridOs' });
+if (p === 'repos/sam/tridOs') out({ full_name: 'sam/tridOs' });
+if (p === 'repos/knittingCat/tridOs') out({ default_branch: 'main' });
+if (p.startsWith('repos/knittingCat/tridOs/git/ref/')) out({ object: { sha: 'basesha' } });
+if (p === 'repos/sam/tridOs/git/refs') out({});
+if (p.startsWith('repos/sam/tridOs/contents/')) { if (method === 'GET') fail(404, 'Not Found'); out({}); }
+if (p === 'repos/knittingCat/tridOs/pulls') out({ html_url: 'https://github.com/knittingCat/tridOs/pull/7' });
+fail(404, 'unexpected ' + p);
+`,
+    { mode: 0o755 },
+  );
+  return { file, log };
+};
+
+await test('publishing goes into the tridOs repo: asks first; direct commit with write access, a pull request without; removal', async () => {
+  const dir = path.join(path.dirname(home), 'bin');
+  fs.mkdirSync(dir, { recursive: true });
+  const { file, log } = ghStub(dir);
+  process.env.TRIDOS_GH = file;
   const os = fresh();
   os.settings.author = 'Sam';
   os.install('distributor');
   fs.writeFileSync(path.join(APPS_DIR, 'sky-clock.js'), HELLO);
   os.reloadUserApps();
   const d = os.launch('distributor').app;
-  d.publish(d.myApps().find((x) => x.name === 'Sky Clock'));
-  assert.ok(os.modal && /Publish to GitHub/.test(os.modal.title) && /PUBLIC/.test(os.modal.message));
-  assert.ok(!fs.existsSync(log), 'nothing is published before you say yes');
+  const app = () => d.myApps().find((x) => x.name === 'Sky Clock');
+  // with write access
+  d.publish(app());
+  assert.ok(os.modal && /catalog/.test(os.modal.title) && /knittingCat\/tridOs/.test(os.modal.message) && /public/i.test(os.modal.message));
+  assert.ok(!fs.existsSync(log), 'nothing is sent before you say yes');
   os.closeModal(1);
-  await sleep(400);
+  await until(() => !d.busy);
   assert.equal(d.published.length, 1);
-  assert.equal(d.published[0].url, 'https://gist.github.com/sam/abc123def4567890');
-  assert.match(fs.readFileSync(log, 'utf8'), /gist create --public/);
-  assert.equal(fs.readFileSync(clip, 'utf8'), 'https://gist.github.com/sam/abc123def4567890');
+  assert.equal(d.published[0].mode, 'direct');
+  const calls = fs.readFileSync(log, 'utf8');
+  assert.match(calls, /api -X PUT repos\/knittingCat\/tridOs\/contents\/apps\/sky-clock\.tridapp --input -/);
+  const sent = calls.split('\n').find((l) => /-X PUT/.test(l));
+  assert.match(sent, /"message":"Add Sky Clock v2\.1\.0 by Sam"/);
+  assert.ok(fs.readFileSync(clip, 'utf8').includes('github.com/knittingCat/tridOs'));
   d.go('published');
-  assert.match(screen(os), /abc123def4567890/);
+  assert.match(screen(os), /in the catalog/);
+  // update: the existing file's sha is sent
+  fs.writeFileSync(log, '');
+  process.env.STUB_EXISTS = '1';
+  d.publish(app());
+  os.closeModal(1);
+  await until(() => !d.busy);
+  assert.match(fs.readFileSync(log, 'utf8'), /"sha":"oldsha"/);
+  assert.match(fs.readFileSync(log, 'utf8'), /Update Sky Clock/);
+  // removing it from the catalog (the file exists there)
   d.unpublish(d.published[0]);
   os.closeModal(1);
-  await sleep(300);
+  await until(() => !d.busy);
   assert.equal(d.published.length, 0);
-  assert.match(fs.readFileSync(log, 'utf8'), /gist delete abc123def4567890 --yes/);
-  // gh not installed or not signed in: a plain explanation
-  process.env.TRIDOS_GH = path.join(bin, 'no-such-gh');
-  d.publish(d.myApps()[0]);
+  assert.match(fs.readFileSync(log, 'utf8'), /-X DELETE repos\/knittingCat\/tridOs\/contents\/apps\/sky-clock\.tridapp/);
+  delete process.env.STUB_EXISTS;
+  // without write access: fork, branch, file, pull request
+  fs.writeFileSync(log, '');
+  process.env.STUB_MODE = 'pr';
+  d.publish(app());
   os.closeModal(1);
-  await sleep(300);
+  await until(() => !d.busy);
+  assert.equal(d.published[0].mode, 'pr');
+  assert.equal(d.published[0].url, 'https://github.com/knittingCat/tridOs/pull/7');
+  const pr = fs.readFileSync(log, 'utf8');
+  assert.match(pr, /-X POST repos\/knittingCat\/tridOs\/forks/);
+  assert.match(pr, /-X POST repos\/sam\/tridOs\/git\/refs/);
+  assert.match(pr, /-X PUT repos\/sam\/tridOs\/contents\/apps\/sky-clock\.tridapp/);
+  assert.match(pr, /-X POST repos\/knittingCat\/tridOs\/pulls/);
+  assert.match(d.status.t, /pull request/);
+  d.go('published');
+  assert.match(screen(os), /waiting for the owner/);
+  delete process.env.STUB_MODE;
+  // gh missing: a plain explanation
+  process.env.TRIDOS_GH = path.join(dir, 'no-such-gh');
+  d.publish(app());
+  os.closeModal(1);
+  await until(() => !d.busy);
   assert.match(d.status.t, /GitHub command \(gh\) is not installed/);
   delete process.env.TRIDOS_GH;
+  // an app that reaches out cannot be published
+  fs.writeFileSync(path.join(APPS_DIR, 'bad.js'), `module.exports = { name: 'Bad', create() { return require('fs'); } };`);
+  os.reloadUserApps();
+  const bad = d.myApps().find((x) => x.name === 'Bad');
+  d.publish(bad);
+  assert.equal(os.modal, null);
+  assert.match(d.status.t, /require/);
+  fs.rmSync(path.join(APPS_DIR, 'bad.js'));
+});
+
+await test('the catalog: lists what is in the repo, shows installed / update, and installs after a review', async () => {
+  const pkgA = encodePackage(mkPkg({ name: 'Cat App', version: '1.0.0', author: 'Pat' }));
+  const evil = encodePackage(mkPkg({ name: 'Catalog Evil', code: `module.exports = { name: 'x', create() { process.exit(); } };` }));
+  const server = http.createServer((req, res) => {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    if (req.url === '/contents') {
+      return res.end(JSON.stringify([
+        { name: 'cat-app.tridapp', type: 'file', download_url: base + '/raw/cat-app', html_url: base + '/blob/cat-app' },
+        { name: 'catalog-evil.tridapp', type: 'file', download_url: base + '/raw/evil', html_url: base + '/blob/evil' },
+        { name: 'broken.tridapp', type: 'file', download_url: base + '/raw/broken' },
+        { name: 'README.md', type: 'file', download_url: base + '/raw/readme' },
+      ]));
+    }
+    if (req.url === '/raw/cat-app') return res.end(pkgA);
+    if (req.url === '/raw/evil') return res.end(evil);
+    if (req.url === '/raw/broken') return res.end('TRIDAPP1.AAAA');
+    res.statusCode = 404;
+    res.end('no');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  process.env.TRIDOS_CATALOG_API = `http://127.0.0.1:${server.address().port}/contents`;
+  const os = fresh();
+  os.install('distributor');
+  const d = os.launch('distributor', { tab: 'catalog' }).app;
+  await sleep(600);
+  let s = screen(os);
+  assert.match(s, /TridOS catalog/);
+  assert.match(s, /Cat App/);
+  assert.match(s, /by Pat/);
+  assert.doesNotMatch(s, /broken|README/, 'files that are not apps are skipped');
+  assert.equal(d.catalog.length, 2);
+  d.sel.catalog = d.catalog.findIndex((i) => i.pkg.name === 'Cat App');
+  key(os, 'enter'); // review
+  assert.ok(d.review);
+  assert.match(screen(os), /the TridOS catalog/);
+  key(os, 'enter'); // install
+  assert.ok(os.isInstalled('community:cat-app.js'));
+  assert.equal(os.userApps['community:cat-app.js'].source.includes('catalog'), true);
+  d.go('catalog');
+  assert.match(screen(os), /Installed/);
+  // an app in the catalog that reaches out is refused even if someone merged it
+  d.sel.catalog = d.catalog.findIndex((i) => i.pkg.name === 'Catalog Evil');
+  key(os, 'enter');
+  assert.match(screen(os), /Not allowed: process/);
+  key(os, 'enter');
+  assert.ok(!os.userApps['community:catalog-evil.js']);
+  d.review = null;
+  // offline / bad answer: a plain message
+  process.env.TRIDOS_CATALOG_API = 'http://127.0.0.1:1/contents';
+  await d.loadCatalog();
+  assert.match(screen(os), /Could not load the catalog/);
+  delete process.env.TRIDOS_CATALOG_API;
+  server.close();
 });
 
 await test('a .tridapp file on the Desktop installs by opening it; apps from others can be removed', async () => {

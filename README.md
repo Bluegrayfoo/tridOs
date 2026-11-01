@@ -34,7 +34,7 @@ tridos --reset      forget settings, installed apps and windows (your files stay
 tridos --snapshot   draw one frame as text (for tests); add --text for just the text layer
 ```
 
-Needs Node 18+. No packages to install. Run `npm test` for the self-test (32 checks, headless).
+Needs Node 18+. No packages to install. Run `npm test` for the self-test (33 checks, headless).
 
 ## Text, fonts and the terminal
 
@@ -112,14 +112,18 @@ and `TextArea`, `os.toast`, `os.dialog`, `os.ask` and `os.launch` do what they s
 
 ## Sharing apps (App Distributor)
 
-Get **App Distributor** from the App Store. An app you made in Code Studio can be sent three ways, and all
-three carry the same thing: one piece of text starting `TRIDAPP1.` (the app, compressed, with a checksum).
+Get **App Distributor** from the App Store. Every app is carried as one piece of text starting `TRIDAPP1.` (the app,
+compressed, with a checksum). An app you made in Code Studio can go to other people three ways:
 
-- **Publish link**: makes a *public GitHub gist* on your GitHub account (needs the
-  [`gh`](https://cli.github.com) command, signed in with `gh auth login`) and puts the link on your
-  clipboard. Anyone with TridOS pastes the link into **Get apps**. You can delete the link later (Published).
+- **Publish to catalog**: puts it in the **[`apps/`](apps) folder of this repo**, the TridOS catalog, using your GitHub
+  account through the [`gh`](https://cli.github.com) command (`gh auth login` once). If you can edit this repo the app goes
+  straight in; otherwise TridOS forks the repo and opens a **pull request**, and the owner reads the app's code before
+  merging it. Everyone with TridOS then sees it in **Catalog** and can install it. (Published shows what you sent; you can
+  take back an app you put in directly.)
 - **Copy code**: puts the text on your clipboard; paste it in a message. The other person pastes it in **Get apps**.
 - **Save file**: writes `name.tridapp` on your Desktop. Send the file; opening it in TridOS (Finder or Desktop) installs it.
+
+**Get apps** also installs from any https link (a GitHub gist page works).
 
 Before anything is installed you **read the app's source** and approve it. Make sure you trust whoever sent it:
 **an app is code, and TridOS cannot fully sandbox JavaScript.** What it does to limit the risk:

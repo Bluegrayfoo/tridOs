@@ -124,23 +124,108 @@ function ghMessage(r) {
   return e.split('\n')[0] || 'GitHub said no.';
 }
 
-// Put the package text on a public gist (your GitHub account, through gh). -> { url, id }
-export async function publishGist(text, filename, desc) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tridos-'));
-  const file = path.join(dir, filename);
-  try {
-    fs.writeFileSync(file, text);
-    const r = await run(GH(), ['gist', 'create', '--public', '--desc', desc, file], { timeout: 45000 });
-    if (r.code !== 0) throw new Error(ghMessage(r));
-    const url = r.out.split('\n').map((l) => l.trim()).filter((l) => /^https:\/\/gist\./.test(l)).pop();
-    if (!url) throw new Error('GitHub did not give back a link.');
-    return { url, id: url.split('/').pop() };
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+// ---------- the catalog: the apps/ folder of the tridOs repo on GitHub ----------
+// Browsing needs no account (raw files and the public API). Publishing uses the gh command: someone with write access to the repo
+// commits the app straight in; anyone else forks the repo and opens a pull request, so the owner reads every app before it is added.
+
+export const catalogRepo = () => process.env.TRIDOS_CATALOG_REPO || 'knittingCat/tridOs';
+export const CATALOG_DIR = 'apps';
+const catalogApi = () => process.env.TRIDOS_CATALOG_API || `https://api.github.com/repos/${catalogRepo()}/contents/${CATALOG_DIR}`;
+export const catalogUrl = () => `https://github.com/${catalogRepo()}/tree/main/${CATALOG_DIR}`;
+
+// Every package in the catalog: [{ pkg, url }]. Files that are not valid packages are skipped.
+export async function fetchCatalog(decode, { limit = 60 } = {}) {
+  const list = JSON.parse(await fetchText(catalogApi(), { max: 2 * 1024 * 1024 }));
+  if (!Array.isArray(list)) throw new Error('The catalog did not answer properly.');
+  const files = list.filter((f) => f.type === 'file' && /\.tridapp$/.test(f.name) && f.download_url).slice(0, limit);
+  const out = [];
+  for (let i = 0; i < files.length; i += 6) {
+    const got = await Promise.all(
+      files.slice(i, i + 6).map(async (f) => {
+        try {
+          return { pkg: decode(await fetchText(f.download_url)), url: f.html_url || f.download_url };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    out.push(...got.filter(Boolean));
   }
+  return out;
 }
 
-export async function deleteGist(id) {
-  const r = await run(GH(), ['gist', 'delete', id, '--yes'], { timeout: 30000 });
-  if (r.code !== 0) throw new Error(ghMessage(r));
+// gh api: JSON in, JSON out. Errors carry the HTTP status.
+async function ghJson(args, body = null) {
+  const a = ['api', ...args];
+  if (body) a.push('--input', '-');
+  const r = await run(GH(), a, { input: body ? JSON.stringify(body) : null, timeout: 45000 });
+  if (r.code !== 0) {
+    const e = new Error(ghMessage(r));
+    e.status = Number(/HTTP (\d{3})/.exec(r.err + r.out)?.[1] || 0);
+    throw e;
+  }
+  try {
+    return r.out.trim() ? JSON.parse(r.out) : {};
+  } catch {
+    return {};
+  }
+}
+const notFound = (e) => e.status === 404;
+
+// Add (or update) an app in the catalog. -> { mode: 'direct' | 'pr', url }
+export async function publishToCatalog(text, pkg) {
+  const repo = catalogRepo();
+  const file = `${CATALOG_DIR}/${pkg.id}.tridapp`;
+  const login = (await ghJson(['user'])).login;
+  let existing = null;
+  try {
+    existing = await ghJson([`repos/${repo}/contents/${file}`]);
+  } catch (e) {
+    if (!notFound(e)) throw e;
+  }
+  const content = Buffer.from(text + '\n').toString('base64');
+  const message = `${existing ? 'Update' : 'Add'} ${pkg.name} v${pkg.version}${pkg.author ? ' by ' + pkg.author : ''}`;
+  try {
+    const r = await ghJson(['-X', 'PUT', `repos/${repo}/contents/${file}`], { message, content, ...(existing ? { sha: existing.sha } : {}) });
+    return { mode: 'direct', url: r.content?.html_url || `https://github.com/${repo}/blob/main/${file}` };
+  } catch (e) {
+    if (![403, 404, 422].includes(e.status)) throw e; // no write access: go through a pull request instead
+  }
+  const fork = await ghJson(['-X', 'POST', `repos/${repo}/forks`]);
+  const forkName = fork.full_name || `${login}/${repo.split('/')[1]}`;
+  for (let i = 0; i < 20; i++) {
+    try {
+      await ghJson([`repos/${forkName}`]);
+      break;
+    } catch (e) {
+      if (!notFound(e) || i === 19) throw e;
+      await new Promise((r) => setTimeout(r, process.env.TRIDOS_GH ? 10 : 1500));
+    }
+  }
+  const base = (await ghJson([`repos/${repo}`])).default_branch || 'main';
+  const sha = (await ghJson([`repos/${repo}/git/ref/heads/${base}`])).object?.sha;
+  const branch = `publish-${pkg.id}-${Date.now().toString(36)}`;
+  await ghJson(['-X', 'POST', `repos/${forkName}/git/refs`], { ref: `refs/heads/${branch}`, sha });
+  let there = null;
+  try {
+    there = await ghJson([`repos/${forkName}/contents/${file}?ref=${branch}`]);
+  } catch (e) {
+    if (!notFound(e)) throw e;
+  }
+  await ghJson(['-X', 'PUT', `repos/${forkName}/contents/${file}`], { message, content, branch, ...(there ? { sha: there.sha } : {}) });
+  const pr = await ghJson(['-X', 'POST', `repos/${repo}/pulls`], {
+    title: message,
+    head: `${login}:${branch}`,
+    base,
+    body: `An app for the TridOS catalog, made with App Distributor.\n\n- **${pkg.name}** v${pkg.version}\n- by ${pkg.author || login}\n- ${pkg.desc || 'no description'}\n- checksum \`${pkg.sha256}\`\n\nPlease read \`${file}\` (decode it in App Distributor, Get apps) before merging: it is code that runs on people's computers.`,
+  });
+  return { mode: 'pr', url: pr.html_url };
+}
+
+// Take an app out of the catalog (only works if you have write access).
+export async function removeFromCatalog(appId) {
+  const repo = catalogRepo();
+  const file = `${CATALOG_DIR}/${appId}.tridapp`;
+  const existing = await ghJson([`repos/${repo}/contents/${file}`]);
+  await ghJson(['-X', 'DELETE', `repos/${repo}/contents/${file}`], { message: `Remove ${appId}`, sha: existing.sha });
 }
