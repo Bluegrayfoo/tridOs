@@ -4,7 +4,7 @@ An app is **one `.js` file** that sets `module.exports`. It is ordinary JavaScri
 `Math`, `JSON`, `Date`, `Array`, classes, `async`, everything. What is different is the surroundings. There is no browser, no DOM,
 no HTML or CSS: you draw into a window with a few functions, and TridOS calls you when something happens.
 
-If you have 10 minutes, read sections 1 to 5 and look at the three apps in [`examples/`](examples).
+If you have 10 minutes, read sections 1 to 5 and look at the two apps in [`examples/`](examples).
 
 ## 1. Your first app (60 seconds)
 
@@ -19,10 +19,10 @@ Your apps live in `~/.tridos/apps/<name>.js`. You can also edit them in any edit
 
 ```js
 module.exports = {
-  name: 'Stopwatch',                       // shown in the Dock and the App Store
-  desc: 'Start, stop and lap.',            // one line
+  name: 'My App',                          // shown in the Dock and the App Store
+  desc: 'What it does, in a line.',        // one line
   version: '1.0.0',                        // used when you share it
-  icon: { color: '#ff453a', glyph: 'T' },  // a colour and one letter
+  icon: { color: '#ff453a', glyph: 'M' },  // a colour and one letter
   size: [44, 15],                          // the window, in text cells: columns, rows
   create(os, win, saved) {                 // called once, when the window opens
     // set up your state here, then return the app:
@@ -125,7 +125,7 @@ you can lay buttons side by side. You can also add your own areas: `hits.add(x, 
 
 `tick(dt, focused)` is called about 30 times a second for every open window. `dt` is the seconds since the last call (never more
 than 0.2). **Return `true` if something changed and the window needs repainting**, `false` otherwise (so an idle app costs nothing).
-See `examples/bounce.js` (physics in pixels) and `examples/stopwatch.js` (a timer).
+See `examples/bounce.js` (physics in pixels).
 
 You can use `Date.now()`, `setTimeout` and so on too, but `tick` is simpler and stops when the window does.
 
@@ -217,9 +217,8 @@ the one you give the first time you share. The icon is the `icon` line.
 
 ## 13. The example apps
 
-All three run as your own apps and as shared apps (they pass the scan and work inside the fence). Copy one into Code Studio as a
-starting point.
+Both run as your own apps and as shared apps (they pass the scan and work inside the fence). Copy one into Code Studio as a
+starting point. (The **Counter** template in Code Studio shows buttons with `Hits` and `save()`/`saved`.)
 
-- [`examples/stopwatch.js`](examples/stopwatch.js): buttons with `Hits`, `tick(dt)`, `save()`/`saved`, keys.
 - [`examples/bounce.js`](examples/bounce.js): pixel drawing and animation, mouse pixels `e.px`/`e.py`.
 - [`examples/sticky-note.js`](examples/sticky-note.js): `os.ui.TextArea`, `title()`, `menus()`, saving text.

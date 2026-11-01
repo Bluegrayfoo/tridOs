@@ -87,7 +87,7 @@ Only the **App Store** is installed at first. Open it, choose **Get**, and the a
 
 ## Making apps
 
-**New to this? Read the [guide for people who know JavaScript](docs/GUIDE.md)** (with three example apps in
+**New to this? Read the [guide for people who know JavaScript](docs/GUIDE.md)** (with two example apps in
 [`docs/examples`](docs/examples)). The short version:
 
 Open Code Studio → **New App** → pick a template (Hello, Counter, Paint) → **Run**. Run saves the file,

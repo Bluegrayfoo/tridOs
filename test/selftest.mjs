@@ -998,7 +998,7 @@ await test('a .tridapp file on the Desktop installs by opening it; apps from oth
 await test('the example apps in docs/examples work, as your own apps and as shared apps (scanned and fenced)', async () => {
   const dir = new URL('../docs/examples/', import.meta.url).pathname;
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js'));
-  assert.ok(files.length >= 3);
+  assert.ok(files.length >= 2);
   for (const f of files) {
     const code = fs.readFileSync(path.join(dir, f), 'utf8');
     assert.equal(scanSource(code).length, 0, f + ' passes the scan, so it can be shared');
@@ -1019,19 +1019,7 @@ await test('the example apps in docs/examples work, as your own apps and as shar
       assert.ok(w, f + ' opens');
       screen(os);
       const app = w.app;
-      if (f === 'stopwatch.js') {
-        assert.match(screen(os), /00:00\.0/);
-        key(os, ' ');
-        for (let i = 0; i < 5; i++) app.tick(0.5);
-        assert.match(screen(os), /00:02\.5/);
-        key(os, 'l');
-        key(os, ' ');
-        assert.match(screen(os), /Lap 1/);
-        assert.equal(app.save().laps.length, 1);
-        // the saved state comes back
-        const again = os.windows.find((x) => x === w) && def.create(os, { ...w, def }, app.save());
-        again.draw(os.contentView(w), true);
-      } else if (f === 'bounce.js') {
+      if (f === 'bounce.js') {
         click(os, w.x + 10, w.y + 6);
         click(os, w.x + 20, w.y + 4);
         for (let i = 0; i < 30; i++) assert.equal(app.tick(0.05, true), true);
