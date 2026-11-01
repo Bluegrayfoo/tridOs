@@ -10,7 +10,10 @@ done
 HERE="$(cd "$(dirname "$SRC")" && pwd)"
 ROOT="$HERE/.."
 if [ ! -f "$ROOT/src/main.js" ]; then
-  ROOT="$(find "$HOME/.tlib/repos/knittingCat" -maxdepth 2 -type d \( -name tridOs -o -name TridOS -o -name tridos \) 2>/dev/null | head -1)"
+  # installed by tlib: the repo is under ~/.tlib/repos/<owner>/<repo>/<branch>/
+  FOUND="$(find "$HOME/.tlib/repos" -maxdepth 5 -ipath '*/tridos/*src/main.js' 2>/dev/null | head -1)"
+  ROOT=""
+  [ -n "$FOUND" ] && ROOT="$(dirname "$(dirname "$FOUND")")"
 fi
 if [ -z "$ROOT" ] || [ ! -f "$ROOT/src/main.js" ]; then
   echo "tridos: could not find the TridOS files (src/main.js)" >&2
