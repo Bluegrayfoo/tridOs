@@ -92,7 +92,7 @@ Only the **App Store** is installed at first. Open it, choose **Get**, and the a
   Drag to pan, wheel to zoom, Tab for keyboard pan/zoom. Curves are drawn to the pixel.
 - **Code Studio**: write your own apps (below).
 - **App Distributor**: send your apps to anyone with TridOS, and install apps people send you. See below.
-- **System Settings** (in the  menu, not the App Store): dark / light, accent colour, wallpaper (9), pixel
+- **System Settings** (in the  menu, not the App Store): dark / light, accent colour, wallpaper (14), pixel
   mode, colour depth, clock, Dock size. Changes apply and save at once.
 
 ## Spreadsheet basics
@@ -104,6 +104,10 @@ Examples: `=A1*2`, `=(A1+B1)/2`, `=SUM(A1:B10)`, `=AVERAGE(A1:A10)`, `=MIN(A1:A1
 The active workbook autosaves under `~/.tridos/app-data/` and survives closing the app. **Save/Open** writes/reads `.tridsheet` JSON files on the TridOS disk with formulas intact. **Import CSV** replaces the current grid (undoable); **Export CSV** writes displayed values, not formulas. Quotes, commas and embedded newlines round-trip. Text that could be interpreted as a formula by another spreadsheet is prefixed with an apostrophe on export. Imports are limited to 5 MB, 500 rows, 26 columns and 1,000 characters per cell. Existing exports require confirmation before replacement.
 
 Notes and saved color palettes also live in `~/.tridos/app-data/`; resetting desktop settings does not erase them. These are local files, not encrypted storage.
+
+## Wallpapers
+
+System Settings → Wallpaper includes Dunes, Alpine, Moonlit Lake, Neon Grid and Paper, alongside the nine original designs. All are generated locally and scale to the terminal's pixel size. Use the page arrows, mouse wheel or Page Up/Down to browse; arrow keys move between previews and Enter applies the selection.
 
 ## Making apps
 
