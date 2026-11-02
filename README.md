@@ -76,6 +76,9 @@ Only the **App Store** is installed at first. Open it, choose **Get**, and the a
 
 - **Tricycle browser**: a real Chromium browser with tabs, links, forms, JavaScript, back/forward, reload and scrolling. Web pages are rendered into the terminal pixel buffer. See [browser setup](#tricycle-browser-setup).
 - **Clock & Stopwatch**: local digital/analog clock, stopwatch, pause/resume, reset and lap history. A running stopwatch continues across restarts. Also available as a shared catalog app.
+- **Calculator**: arithmetic with parentheses, powers (`^`), percentage values (`%` means divide by 100), and saved calculation history. Enter calculates; Ctrl+U clears.
+- **Unit Converter**: offline length, mass, temperature, volume (US customary), speed and time conversions. Swap units or choose them with the arrow buttons.
+- **Calendar**: browse months and save a note for any date. Arrows select a day, Page Up/Down change the month, T returns to today, and Enter edits the selected date's note.
 - **Finder**: browse the TridOS disk, make folders and files, rename, trash, open. (Keys: arrows, Enter,
   Backspace up, `n` new folder, `f` new file, `r` rename, `t` trash.)
 - **Terminal**: TridOS commands (`help`) and, for anything else, your real shell, run in the folder you are in.
