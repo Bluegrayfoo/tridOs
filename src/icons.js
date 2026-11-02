@@ -39,6 +39,18 @@ class IconCtx {
 }
 
 export const ICONS = {
+  calculator: {
+    c1:0x546476,c2:0x263445,
+    paint(g){g.rect(.17,.14,.66,.23,0xccead6);for(let y=0;y<3;y++)for(let x=0;x<3;x++)g.rect(.18+x*.24,.47+y*.15,.15,.1,x===2?0xffa23d:0xd7e0e9);},
+  },
+  converter: {
+    c1:0x52d8b5,c2:0x168c85,
+    paint(g){g.line(.2,.35,.8,.35,0xffffff);g.line(.8,.35,.62,.19,0xffffff);g.line(.8,.35,.62,.51,0xffffff);g.line(.8,.68,.2,.68,0xffffff);g.line(.2,.68,.38,.52,0xffffff);g.line(.2,.68,.38,.84,0xffffff);},
+  },
+  calendar: {
+    c1:0xfffbf1,c2:0xdce5ef,
+    paint(g){g.rect(.09,.13,.82,.22,0xe45855);g.rect(.26,.08,.07,.15,0x35475c);g.rect(.67,.08,.07,.15,0x35475c);for(let y=0;y<3;y++)for(let x=0;x<3;x++)g.rect(.23+x*.23,.44+y*.16,.1,.08,x===1&&y===1?0xe45855:0x66788f);},
+  },
   tricycle: {
     c1: 0x43d5ec,
     c2: 0x1554b9,
