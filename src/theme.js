@@ -79,6 +79,94 @@ function build(W, H, fn) {
 }
 
 const WALLPAPERS = {
+  dunes: {
+    name: 'Dunes',
+    make(W, H) {
+      return build(W, H, (x, y) => {
+        const u = x / W, v = y / H;
+        let c = gradient(y, H, [0x322849, 0xc98579, 0xf4d3a4]);
+        if (Math.hypot((x-W*.73), (y-H*.28)) < Math.min(W,H)*.075) c = 0xffe9bd;
+        const layers = [[.49,.08,3.5,0xdaa074],[.65,.11,4.7,0xb86d51],[.83,.12,3.2,0x713d42]];
+        layers.forEach(([base,amp,f,color],i) => {
+          const edge = base + Math.sin(u*f+i*2)*amp + Math.sin(u*9+i)*.015;
+          if(v>edge)c=mix(color,darken(color,.28),clamp((v-edge)*3,0,1));
+        });
+        return c;
+      });
+    },
+  },
+  alpine: {
+    name: 'Alpine',
+    make(W, H) {
+      return build(W, H, (x, y) => {
+        const u=x/W,v=y/H;
+        let c=gradient(y,H,[0x789ebc,0xc7d7db,0xe9e5d6]);
+        const peaks=[[.23,.72,.28,0x71879b],[.61,.62,.20,0x4f687e],[.85,.52,.40,0x354d64]];
+        for(const [center,width,top,color] of peaks){
+          const ridge=top+Math.abs(u-center)/width*.63;
+          if(v>ridge){c=u<center?mix(color,0xdce5e4,.15):color;
+            if(v<ridge+.09 && ridge<top+.20+Math.sin(u*41)*.015)c=u<center?0xf1f2e8:0xb7cbd4;}
+        }
+        if(v>.85+Math.sin(u*9)*.04)c=0x263f4c;
+        return c;
+      });
+    },
+  },
+  moonlake: {
+    name: 'Moonlit Lake',
+    make(W, H) {
+      const radius=Math.min(W,H)*.09;
+      return build(W,H,(x,y)=>{
+        const u=x/W,v=y/H;
+        let c=gradient(y,H,[0x080d28,0x273e64,0x47617b]);
+        if(v<.5 && hash2(x,y)>.9985)c=0xaac7e7;
+        if(Math.hypot(x-W*.68,y-H*.25)<radius)c=0xe4e9d7;
+        if(v>.54+Math.sin(u*13)*.06+Math.sin(u*29)*.025)c=0x12233c;
+        if(v>.66){
+          c=gradient(y-H*.66,H*.34,[0x314f6b,0x0a172b]);
+          const spread=.025+(v-.66)*.24,shift=Math.sin(v*130)*.018;
+          const shimmer=Math.max(0,1-Math.abs(u-.68+shift)/spread);
+          c=mix(c,0xb6ced3,shimmer*(.15+.35*Math.max(0,Math.sin(v*220))));
+        }
+        return c;
+      });
+    },
+  },
+  neon: {
+    name: 'Neon Grid',
+    make(W,H){
+      return build(W,H,(x,y)=>{
+        const u=x/W,v=y/H;
+        let c=gradient(y,H,[0x100c2e,0x351b50,0x100d28]);
+        const d=Math.hypot(x-W*.5,y-H*.43),r=Math.min(W,H)*.17;
+        if(d<r && (v<.43 || Math.floor(v*100)%4!==0))c=gradient(y-H*.26,H*.34,[0xffce78,0xf752a1]);
+        if(v>.63){
+          const depth=(v-.63)/.37;
+          c=mix(0x201039,0x080c22,depth);
+          const ray=(u-.5)/Math.max(.02,depth)*8;
+          const rayIndex=Math.round(ray);
+          const vertical=Math.abs(rayIndex)<=12 && Math.abs(u-(.5+rayIndex*depth/8))<.65/W;
+          const row=Math.round(1/Math.max(.025,depth));
+          const horizontal=row<=14 && Math.abs(depth-1/row)<.65/(H*.37);
+          if(vertical || horizontal)c=mix(0x7345aa,0xcb59cb,depth);
+        }
+        return c;
+      });
+    },
+  },
+  paper: {
+    name: 'Paper',
+    make(W,H){
+      return build(W,H,(x,y)=>{
+        const u=x/W,v=y/H;
+        let c=gradient(y,H,[0xeee9de,0xd6cfbf]);
+        const shade=Math.max(0,1-Math.abs(u*.7+v-.8)/.5);
+        c=mix(c,0xb8b09d,shade*.12);
+        return mix(c,0xffffff,hash2(x,y)*.045);
+      });
+    },
+  },
+
   waves: {
     name: 'Waves',
     make(W, H) {
