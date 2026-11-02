@@ -1124,12 +1124,44 @@ await test('the browser sets itself up: installs the packages and Chromium, tell
   const before = fs.readFileSync(npmLog, 'utf8');
   assert.equal((await setup.setupBrowser()).ok, true);
   assert.equal(fs.readFileSync(npmLog, 'utf8'), before, 'nothing is installed again');
-  // with the packages there but no Chromium, only Chromium is fetched; a system Chrome counts instead
+  // an installed Chrome does not stand in for Chromium: with the packages but no Chromium, Chromium is still fetched
   fs.rmSync(path.join(browserDir, 'node_modules', 'playwright', 'chromium-bin'));
-  assert.equal(setup.status().chromium, false);
   process.env.TRIDOS_BROWSER_CHANNEL = 'chrome';
-  assert.equal(setup.status().ready, true, 'an installed Chrome is enough');
+  const st = setup.status();
+  assert.equal(st.chromium, false);
+  assert.equal(st.ready, false, 'a Chrome on the Mac is not what it wants');
+  assert.equal(st.usable, true, 'but it can be used if Chromium cannot be had');
+  const again = [];
+  assert.equal((await setup.setupBrowser({ onProgress: (m) => again.push(m) })).ok, true);
+  assert.ok(again.some((m) => /Downloading Chromium/.test(m)), 'it downloads Chromium even though Chrome is there');
+  assert.equal(setup.status().ready, true);
   browserEnvOff();
+});
+
+await test('Chromium first: Chrome is only a fallback, and only when it is there', async () => {
+  // packages installed, but the Chromium download fails
+  const dir = path.join(path.dirname(home), 'browser-fallback');
+  const pkg = (name, js) => {
+    fs.mkdirSync(path.join(dir, 'node_modules', name), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'node_modules', name, 'package.json'), JSON.stringify({ name, main: 'index.js' }));
+    fs.writeFileSync(path.join(dir, 'node_modules', name, 'index.js'), js);
+  };
+  pkg('playwright', "module.exports = { chromium: { executablePath: () => '/no/such/chromium', launch: async () => { throw new Error('stub'); } } };");
+  fs.writeFileSync(path.join(dir, 'node_modules', 'playwright', 'cli.js'), "console.log('no network'); process.exit(1);");
+  pkg('pngjs', 'module.exports = { PNG: {} };');
+  process.env.TRIDOS_BROWSER_DIR = dir;
+  process.env.TRIDOS_NO_SYSTEM_CHROME = '1';
+  delete process.env.TRIDOS_BROWSER_CHANNEL;
+  delete process.env.TRIDOS_BROWSER_NO_SETUP;
+  const { ensureBrowser } = await import('../src/browser-setup.js');
+  await assert.rejects(ensureBrowser(), /did not download/, 'no Chromium and no Chrome: it says so');
+  process.env.TRIDOS_BROWSER_CHANNEL = 'chrome'; // a Chrome is available
+  const said = [];
+  const got = await ensureBrowser({ onProgress: (m) => said.push(m) });
+  assert.equal(got.chrome, true, 'it falls back on Chrome');
+  assert.ok(said.some((m) => /Using Google Chrome instead/.test(m)));
+  browserEnvOff();
+  delete process.env.TRIDOS_BROWSER_CHANNEL;
 });
 
 await test('the browser engine runs the setup on first start, shows progress, and reports what went wrong', async () => {

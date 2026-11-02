@@ -163,18 +163,18 @@ size); the terminal's cells are only 2×4 pixels, so the pointer is accurate to 
 **It sets itself up.** Nothing to do by hand:
 
 - **With tlib**, `tlib install Bluegrayfoo/tridOs` runs the setup as part of installing (it installs the `playwright` and
-  `pngjs` packages, and downloads Chromium unless Google Chrome is already installed on a Mac). If the setup cannot finish (for
+  `pngjs` packages and downloads Chromium, about 150 MB). If the setup cannot finish (for
   example you are offline) the install still succeeds, and TridOS works without the browser.
 - **Otherwise**, the first time you open the Tricycle browser it does the same setup itself and shows its progress in its window
-  (about 150 MB of Chromium, once, unless Chrome is installed). After that it just opens.
+  (about 150 MB of Chromium, once). After that it just opens.
 
 By hand, if you want to: `node src/browser-setup.js` (or `npm install` then `npm run browser:install`). Set
 `TRIDOS_BROWSER_NO_SETUP=1` to turn the automatic setup off. Packages are installed next to TridOS when that folder is writable,
 and in `~/.tridos/browser` otherwise.
 
 Then open **App Store → Tricycle browser → Get**. Clock & Stopwatch is available there too.
-On macOS, an installed Google Chrome can be used when Playwright Chromium is absent.
-Set `TRIDOS_BROWSER_CHANNEL=chrome` explicitly to select Chrome.
+Tricycle uses Chromium. Only if Chromium cannot be downloaded (you are offline, say) does it fall back on an installed
+Google Chrome on a Mac. Set `TRIDOS_BROWSER_CHANNEL=chrome` to choose Chrome on purpose.
 
 Tricycle uses a separate private Chromium session; it does not read your everyday browser profile.
 Cookies and logins last until the app closes. Only the last active URL is restored.
