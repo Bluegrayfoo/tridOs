@@ -12,7 +12,11 @@ import tricycle from './tricycle.js';
 import clock from './clock.js';
 import { calculator, converter, calendar } from './utilities.js';
 
+import { notes, colorPicker } from './productivity.js';
+import { monitor, diskUsage } from './monitor.js';
+import spreadsheets from './spreadsheet.js';
+
 export function loadBuiltinApps() {
-  const list = [appstore, finder, terminal, editor, grapher, studio, distributor, settings, tricycle, clock, calculator, converter, calendar];
+  const list = [appstore, finder, terminal, editor, grapher, studio, distributor, settings, tricycle, clock, calculator, converter, calendar, notes, colorPicker, monitor, diskUsage, spreadsheets];
   return Object.fromEntries(list.map((a) => [a.id, a]));
 }

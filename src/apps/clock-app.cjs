@@ -1,15 +1,28 @@
 // Also distributed unchanged as a shared TridOS app.
 module.exports = {
   name: 'Clock & Stopwatch',
-  desc: 'Local clock, analog face, and a stopwatch with pause, reset and laps.',
-  version: '1.1.0',
+  desc: 'Local clock, analog face, a stopwatch with pause, reset and laps, and a countdown timer.',
+  version: '1.2.0',
   icon: { color: '#ed9d38', glyph: 'C', symbol: 'clock' },
   size: [54, 24],
   create(os, win, saved) {
-    const { Hits, button } = os.ui;
+    const { Hits, button, LineInput } = os.ui;
     const hits = new Hits();
     const s = saved || {};
-    let tab = s.tab === 'stopwatch' ? 'stopwatch' : 'clock';
+    let tab = ['clock','stopwatch','timer'].includes(s.tab) ? s.tab : 'clock';
+    const timerInput = new LineInput(String(s.timerInput || '5'));
+    let timerLeft = Number.isFinite(s.timerLeft) ? Math.max(0, s.timerLeft) : 300000;
+    let timerRunning = s.timerRunning === true, timerDone = s.timerDone === true;
+    if (timerRunning && Number.isFinite(s.savedAt)) timerLeft = Math.max(0, timerLeft - Math.max(0, Date.now() - s.savedAt));
+    let timerStart = performance.now();
+    const remaining = () => Math.max(0, timerLeft - (timerRunning ? Math.max(0, performance.now() - timerStart) : 0));
+    const startTimer = () => {
+      if (timerRunning) { timerLeft = remaining(); timerRunning = false; return; }
+      if (timerLeft <= 0 || timerDone) { os.toast('Set a duration first.'); return; }
+      timerStart = performance.now(); timerRunning = true; timerDone = false;
+    };
+    const setTimer = () => { const minutes = Number(timerInput.text); if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 10080) { os.toast('Enter minutes from above 0 to 10080 (7 days).'); return; } timerLeft = minutes * 60000; timerRunning = false; timerDone = false; };
+    const checkTimer = () => { if (timerRunning && remaining() <= 0) { timerLeft = 0; timerRunning = false; timerDone = true; os.toast('Countdown finished!'); return true; } return false; };
     let elapsed = Number.isFinite(s.elapsed) ? Math.max(0, s.elapsed) : 0;
     let running = s.running === true;
     if (running && Number.isFinite(s.savedAt)) elapsed += Math.max(0, Date.now() - s.savedAt);
@@ -54,7 +67,16 @@ module.exports = {
         v.fill(th.bg); hits.reset();
         button(v, hits, 1, 0, 'Clock', th, () => tab = 'clock', { active: tab === 'clock' });
         button(v, hits, 10, 0, 'Stopwatch', th, () => tab = 'stopwatch', { active: tab === 'stopwatch' });
-        if (tab === 'clock') {
+        button(v, hits, 23, 0, 'Timer', th, () => tab = 'timer', { active: tab === 'timer' });
+        if (tab === 'timer') {
+          digital(v, duration(remaining()), 3, timerDone ? th.danger : th.accent);
+          v.text(2,8,'Minutes',th.dim); timerInput.draw(v,11,8,10,th);
+          button(v,hits,23,8,'Set',th,setTimer);
+          button(v,hits,2,11,timerRunning?'Pause':'Start',th,startTimer,{primary:true});
+          button(v,hits,13,11,'Reset',th,setTimer);
+          v.text(2,13,timerDone?'Time is up!':timerRunning?'Counting down':'Paused',th.text);
+          v.text(1,v.h-1,os.util.fit('Enter set • Space start/pause • Keep app open',v.w-2),th.dim);
+        } else if (tab === 'clock') {
           const d = new Date();
           const hours = os.settings.clock24 ? d.getHours() : d.getHours() % 12 || 12;
           digital(v, pad(hours) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()), 3, th.text);
@@ -94,7 +116,8 @@ module.exports = {
         }
       },
       key(e) {
-        if (e.key === 'tab') { tab = tab==='clock'?'stopwatch':'clock'; return true; }
+        if (e.key === 'tab') { tab = tab==='clock'?'stopwatch':tab==='stopwatch'?'timer':'clock'; return true; }
+        if (tab === 'timer') { if (e.key === 'enter') { setTimer(); return true; } if (e.key === ' ') { startTimer(); return true; } const used = timerInput.key(e); if (timerInput.text.length > 16) timerInput.set(timerInput.text.slice(0,16)); return used; }
         if (tab !== 'stopwatch') return false;
         if (e.key === ' ') { toggle(); return true; }
         if (e.key.toLowerCase() === 'l') { lap(); return true; }
@@ -106,11 +129,13 @@ module.exports = {
         if(e.kind==='wheel') scroll = Math.max(0,scroll+e.dir*3);
       },
       tick() {
-        const next = tab==='clock' ? Math.floor(Date.now()/1000) : Math.floor(total()/100);
+        const finished = checkTimer();
+        const next = tab==='clock' ? Math.floor(Date.now()/1000) : tab==='timer' ? Math.floor(remaining()/100) : Math.floor(total()/100);
+        if (finished) { stamp = next; return true; }
         if(next===stamp) return false;
         stamp=next; return true;
       },
-      save() { return { tab, elapsed:total(), running, savedAt:Date.now(), laps }; },
+      save() { return { tab, elapsed:total(), running, savedAt:Date.now(), laps, timerInput:timerInput.text, timerLeft:remaining(), timerRunning, timerDone }; },
     };
   },
 };
