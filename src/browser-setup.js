@@ -42,22 +42,20 @@ export function loadPackage(name) {
   return null;
 }
 
-export const chromeInstalled = () => process.platform === 'darwin' && !process.env.TRIDOS_NO_SYSTEM_CHROME && (!!process.env.TRIDOS_FAKE_CHROME || fs.existsSync('/Applications/Google Chrome.app'));
+export const chromeInstalled = () => process.platform === 'darwin' && !process.env.TRIDOS_NO_SYSTEM_CHROME && fs.existsSync('/Applications/Google Chrome.app');
 
-// What is already in place: { playwright, pngjs, chromium (the downloaded Chromium), chrome (a system Chrome to fall back on),
-// ready (everything for Chromium), usable (ready, or the packages plus Chrome to fall back on) }
+// What is already in place: { playwright, pngjs, chromium: true | 'chrome' | false, ready }
 export function status() {
   const playwright = loadPackage('playwright');
   const pngjs = loadPackage('pngjs');
   let chromium = false;
   if (playwright) {
     try {
-      chromium = fs.existsSync(playwright.module.chromium.executablePath());
+      if (fs.existsSync(playwright.module.chromium.executablePath())) chromium = true;
     } catch {}
+    if (!chromium && (chromeInstalled() || process.env.TRIDOS_BROWSER_CHANNEL)) chromium = 'chrome';
   }
-  const chrome = chromeInstalled() || !!process.env.TRIDOS_BROWSER_CHANNEL; // a Chrome picked on purpose counts too
-  const ready = !!(playwright && pngjs && chromium);
-  return { playwright: !!playwright, pngjs: !!pngjs, chromium, chrome, ready, usable: ready || !!(playwright && pngjs && chrome) };
+  return { playwright: !!playwright, pngjs: !!pngjs, chromium, ready: !!(playwright && pngjs && chromium) };
 }
 
 // Run a command, calling onLine(text) for each line it prints (progress bars use \r, so those count as lines too).
@@ -126,24 +124,16 @@ export async function setupBrowser({ onProgress = () => {} } = {}) {
   return { ok: true };
 }
 
-// For the browser engine: the playwright and pngjs modules, setting things up first if they are missing. It uses the downloaded
-// Chromium; only if that cannot be had (offline, say) does it fall back on an installed Google Chrome (chrome: true).
+// For the browser engine: the playwright and pngjs modules, setting things up first if they are missing.
 export async function ensureBrowser({ onProgress = () => {} } = {}) {
   let st = status();
   if (!st.ready) {
-    if (process.env.TRIDOS_BROWSER_NO_SETUP) {
-      if (!st.usable) throw new Error('The browser is not set up. Run: node src/browser-setup.js');
-    } else {
-      const r = await setupBrowser({ onProgress });
-      st = status();
-      if (!r.ok) {
-        if (!st.usable) throw new Error(`${r.error} To set it up by hand, run: node src/browser-setup.js`);
-        onProgress(`${r.error} Using Google Chrome instead.`);
-      }
-    }
+    if (process.env.TRIDOS_BROWSER_NO_SETUP) throw new Error('The browser is not set up. Run: node src/browser-setup.js');
+    const r = await setupBrowser({ onProgress });
+    if (!r.ok) throw new Error(`${r.error} To set it up by hand, run: node src/browser-setup.js`);
+    st = status();
   }
-  st = status();
-  return { chromium: loadPackage('playwright').module.chromium, PNG: loadPackage('pngjs').module.PNG, chrome: !st.chromium };
+  return { chromium: loadPackage('playwright').module.chromium, PNG: loadPackage('pngjs').module.PNG, chrome: st.chromium === 'chrome' };
 }
 
 // ---- command line ----
