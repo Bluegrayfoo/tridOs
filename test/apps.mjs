@@ -132,3 +132,23 @@ for(const def of [calculator,converter,calendar]){
  for(const saved of [undefined,null,{}]) for(const [w,h]of [def.minSize,def.size]){const cv=new Canvas(w*3,Math.ceil(h*10/4));def.create(os,{},saved).draw(new ui.View(cv,0,0,w,h),true);assert.ok(cv.pix.some(c=>c!==th.bg));}
 }
 console.log('PASS: utility store discovery, calculator precedence/validation/history, six conversion categories, leap years/month boundaries, date notes and responsive drawing');
+
+// Wallpaper navigation must reach every preview at different window sizes.
+const {WALLPAPER_IDS,wallpaper}=await import('../src/theme.js');
+const settingsDef=(await import('../src/apps/settings.js')).default;
+for(const [w,h] of [[44,18],[68,26],[100,32]]){
+ const settingsOS={...os,settings:{wallpaper:'waves'},applySettings(){}};
+ const settings=settingsDef.create(settingsOS,{}, {section:'wallpaper'});
+ const cv=new Canvas(w*3,Math.ceil(h*10/4)),view=new ui.View(cv,0,0,w,h);
+ settings.draw(view,true);
+ settings.key({key:'home'});settings.key({key:'down'});assert.equal(settings.sel,settings.wallCols);
+ settings.key({key:'end'});settings.draw(view,true);assert.equal(settings.sel,WALLPAPER_IDS.length-1);
+ settings.key({key:'enter'});assert.equal(settingsOS.settings.wallpaper,WALLPAPER_IDS.at(-1));
+ settings.key({key:'home'});settings.draw(view,true);settings.mouse({kind:'wheel',dir:1});settings.draw(view,true);
+ assert.equal(settings.sel,settings.wallPageSize<WALLPAPER_IDS.length?settings.wallPageSize:0);
+ for(let i=0;i<WALLPAPER_IDS.length;i++){settings.sel=i;settings.draw(view,true);const local=i%settings.wallPageSize;settings.mouse({kind:'down',button:0,x:22+(local%settings.wallCols)*16,y:3+Math.floor(local/settings.wallCols)*7});assert.equal(settingsOS.settings.wallpaper,WALLPAPER_IDS[i]);}
+}
+for(const id of ['dunes','alpine','moonlake','neon','paper']){
+ assert.ok(WALLPAPER_IDS.includes(id));const image=wallpaper(id,160,90);assert.equal(image.length,14400);assert.ok(new Set(image).size>30);assert.deepEqual(wallpaper(id,160,90),image);
+}
+console.log('PASS: new wallpapers render and every wallpaper is reachable through responsive paging');
