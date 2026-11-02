@@ -1,6 +1,7 @@
 // Chromium renders the web; TridOS displays its pixels and forwards input.
 // No Node bindings or TridOS APIs are exposed to sites.
 import fs from 'node:fs';
+import { ensureBrowser } from './browser-setup.js';
 
 export function address(text) {
   const s = String(text || '').trim();
@@ -26,11 +27,14 @@ export class BrowserSession {
     this.tabs = []; this.selected = 0; this.closed = false;
     this.frame = null; this.error = ''; this.width = 800; this.height = 500;
     this.queue = Promise.resolve(); this.capturing = false;
+    this.settingUp = false; this.setupMessage = ''; // true while the first-time setup runs
   }
   get page() { return this.tabs[this.selected]?.page; }
   async start(url = 'about:blank') {
     try {
-      const [{ chromium }, { PNG }] = await Promise.all([import('playwright'), import('pngjs')]);
+      // First time: install the browser packages and Chromium by itself (shown in the window), then carry on.
+      const { chromium, PNG } = await ensureBrowser({ onProgress: m => { this.settingUp = true; this.setupMessage = m; this.changed(); } });
+      this.settingUp = false;
       this.PNG = PNG;
       let channel = process.env.TRIDOS_BROWSER_CHANNEL;
       if (!channel && !fs.existsSync(chromium.executablePath()) && process.platform === 'darwin' && fs.existsSync('/Applications/Google Chrome.app')) channel = 'chrome';
@@ -41,7 +45,8 @@ export class BrowserSession {
       this.browser.on('disconnected', () => { if (!this.closed) this.fail(new Error('Browser stopped. Close and reopen Tricycle.')); });
       await this.newTab(url);
     } catch (e) {
-      if (!this.closed) this.fail(new Error('Browser could not start. In the TridOS folder run npm install, then npm run browser:install. ' + e.message.split('\n')[0]));
+      this.settingUp = false;
+      if (!this.closed) this.fail(new Error('Browser could not start. ' + e.message.split('\n')[0]));
     }
   }
   fail(e) { this.error = String(e.message || e).split('\n')[0]; this.changed(); }

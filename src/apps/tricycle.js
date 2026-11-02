@@ -45,10 +45,16 @@ export class Tricycle {
         content.px(x,y,(data[i]<<16)|(data[i+1]<<8)|data[i+2]);
       }
     } else {
-      content.text(2,2,e.error?'Browser unavailable':'Starting Chromium…',th.text);
-      content.text(2,4,'Setup in the TridOS folder:',th.dim);
-      content.text(2,6,'npm install',th.accent);
-      content.text(2,7,'npm run browser:install',th.accent);
+      if(e.error) {
+        content.text(2,2,'Browser unavailable',th.danger);
+        content.text(2,4,'It tries to set itself up the first time. To do it by hand, run in a terminal:',th.dim);
+        content.text(2,6,'node src/browser-setup.js',th.accent);
+        content.text(2,7,'(in the TridOS folder; or: npm install, then npm run browser:install)',th.dim);
+      } else if(e.settingUp) {
+        content.text(2,2,'Setting up the browser (first time only)…',th.text);
+        content.text(2,4,fit(e.setupMessage||'Starting…',Math.max(10,content.w-4)),th.accent);
+        content.text(2,6,'This downloads Chromium once (about 150 MB) and then it opens by itself.',th.dim);
+      } else content.text(2,2,'Starting Chromium…',th.text);
     }
     v.text(1,v.h-1,fit(e.error||'Ctrl+L address  Ctrl+T new tab  Ctrl+R reload  Click page to type',v.w-2),e.error?th.danger:th.dim);
   }

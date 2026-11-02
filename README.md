@@ -34,7 +34,7 @@ tridos --reset      forget settings, installed apps and windows (your files stay
 tridos --snapshot   draw one frame as text (for tests); add --text for just the text layer
 ```
 
-Needs Node 18+ for the desktop. Tricycle browser needs Node 20+ and the optional browser packages (setup below). Run `npm test` for desktop and app checks; `npm run test:browser` checks real Chromium rendering and interaction.
+Needs Node 18+ for the desktop. The Tricycle browser sets itself up (see [browser setup](#tricycle-browser-setup)). Run `npm test` for desktop and app checks; `npm run test:browser` checks real Chromium rendering and interaction.
 
 ## Text, fonts and the terminal
 
@@ -160,13 +160,17 @@ size); the terminal's cells are only 2×4 pixels, so the pointer is accurate to 
 
 ## Tricycle browser setup
 
-From the TridOS repository folder, run:
+**It sets itself up.** Nothing to do by hand:
 
-```sh
-npm install
-npm run browser:install
-./bin/tridos
-```
+- **With tlib**, `tlib install Bluegrayfoo/tridOs` runs the setup as part of installing (it installs the `playwright` and
+  `pngjs` packages, and downloads Chromium unless Google Chrome is already installed on a Mac). If the setup cannot finish (for
+  example you are offline) the install still succeeds, and TridOS works without the browser.
+- **Otherwise**, the first time you open the Tricycle browser it does the same setup itself and shows its progress in its window
+  (about 150 MB of Chromium, once, unless Chrome is installed). After that it just opens.
+
+By hand, if you want to: `node src/browser-setup.js` (or `npm install` then `npm run browser:install`). Set
+`TRIDOS_BROWSER_NO_SETUP=1` to turn the automatic setup off. Packages are installed next to TridOS when that folder is writable,
+and in `~/.tridos/browser` otherwise.
 
 Then open **App Store → Tricycle browser → Get**. Clock & Stopwatch is available there too.
 On macOS, an installed Google Chrome can be used when Playwright Chromium is absent.

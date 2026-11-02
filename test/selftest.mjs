@@ -1073,6 +1073,123 @@ await test('the example apps in docs/examples work, as your own apps and as shar
   }
 });
 
+// ---------- the browser sets itself up ----------
+// A stand-in for npm that "installs" fake playwright and pngjs packages (and a fake Chromium download), so nothing real is downloaded.
+let browserDir = '';
+let browserSeq = 0; // a new folder each time: Node remembers where a package was, even after the folder is deleted
+const npmLog = path.join(path.dirname(home), 'npm.log');
+const npmStub = path.join(path.dirname(home), 'npm-stub.js');
+fs.writeFileSync(
+  npmStub,
+  `#!/usr/bin/env node
+const fs = require('fs'), path = require('path');
+fs.appendFileSync(${JSON.stringify(npmLog)}, process.argv.slice(2).join(' ') + ' @' + path.basename(process.cwd()) + '\\n');
+console.log('npm stub: installing');
+const t = Date.now(); while (Date.now() - t < 300) {} // slow enough to see the progress
+const nm = path.join(process.cwd(), 'node_modules');
+const pkg = (name, main) => { fs.mkdirSync(path.join(nm, name), { recursive: true }); fs.writeFileSync(path.join(nm, name, 'package.json'), JSON.stringify({ name, main: 'index.js' })); fs.writeFileSync(path.join(nm, name, 'index.js'), main); };
+pkg('playwright', "const path = require('path'); const exe = path.join(__dirname, 'chromium-bin'); module.exports = { chromium: { executablePath: () => exe, launch: async () => { throw new Error('stub: no real browser'); } } };");
+fs.writeFileSync(path.join(nm, 'playwright', 'cli.js'), "const fs = require('fs'), path = require('path'); console.log('Downloading Chromium 10%'); console.log('Downloading Chromium 100%'); fs.writeFileSync(path.join(__dirname, 'chromium-bin'), 'x');");
+pkg('pngjs', 'module.exports = { PNG: { sync: { read() {} } } };');
+`,
+  { mode: 0o755 },
+);
+const browserEnv = () => {
+  browserDir = path.join(path.dirname(home), 'browser-pkgs-' + ++browserSeq);
+  process.env.TRIDOS_BROWSER_DIR = browserDir;
+  process.env.TRIDOS_NPM = npmStub;
+  process.env.TRIDOS_NO_SYSTEM_CHROME = '1';
+  delete process.env.TRIDOS_BROWSER_NO_SETUP;
+  delete process.env.TRIDOS_BROWSER_CHANNEL;
+};
+const browserEnvOff = () => {
+  for (const k of ['TRIDOS_BROWSER_DIR', 'TRIDOS_NPM', 'TRIDOS_NO_SYSTEM_CHROME', 'TRIDOS_BROWSER_NO_SETUP']) delete process.env[k];
+};
+
+await test('the browser sets itself up: installs the packages and Chromium, tells you how it is going, and does nothing twice', async () => {
+  browserEnv();
+  fs.rmSync(browserDir, { recursive: true, force: true });
+  fs.rmSync(npmLog, { force: true });
+  const setup = await import('../src/browser-setup.js');
+  assert.equal(setup.status().ready, false);
+  const said = [];
+  const r = await setup.setupBrowser({ onProgress: (m) => said.push(m) });
+  assert.equal(r.ok, true, r.error);
+  assert.ok(said.some((m) => /Installing the browser packages/.test(m)));
+  assert.ok(said.some((m) => /npm stub/.test(m)), 'what npm prints is passed on');
+  assert.ok(said.some((m) => /Downloading Chromium/.test(m)));
+  assert.equal(said[said.length - 1], 'The browser is ready.');
+  assert.equal(setup.status().ready, true);
+  assert.match(fs.readFileSync(npmLog, 'utf8'), /install --no-audit --no-fund --loglevel=error playwright pngjs @browser-pkgs/);
+  const before = fs.readFileSync(npmLog, 'utf8');
+  assert.equal((await setup.setupBrowser()).ok, true);
+  assert.equal(fs.readFileSync(npmLog, 'utf8'), before, 'nothing is installed again');
+  // with the packages there but no Chromium, only Chromium is fetched; a system Chrome counts instead
+  fs.rmSync(path.join(browserDir, 'node_modules', 'playwright', 'chromium-bin'));
+  assert.equal(setup.status().chromium, false);
+  process.env.TRIDOS_BROWSER_CHANNEL = 'chrome';
+  assert.equal(setup.status().ready, true, 'an installed Chrome is enough');
+  browserEnvOff();
+});
+
+await test('the browser engine runs the setup on first start, shows progress, and reports what went wrong', async () => {
+  browserEnv();
+  fs.rmSync(browserDir, { recursive: true, force: true });
+  const { BrowserSession } = await import('../src/browser-engine.js');
+  const e = new BrowserSession();
+  const p = e.start();
+  assert.equal(e.settingUp, true, 'it says so straight away');
+  assert.match(e.setupMessage, /Installing the browser packages/);
+  await p;
+  assert.equal(e.settingUp, false);
+  assert.match(e.error, /Browser could not start\. stub: no real browser/, 'then it carries on to launch (the stand-in refuses)');
+  // automatic setup switched off: a clear message, nothing installed
+  browserEnv();
+  process.env.TRIDOS_BROWSER_NO_SETUP = '1';
+  const e2 = new BrowserSession();
+  await e2.start();
+  assert.match(e2.error, /not set up\. Run: node src\/browser-setup\.js/);
+  assert.ok(!fs.existsSync(path.join(browserDir, 'node_modules')));
+  browserEnvOff();
+});
+
+await test('Tricycle shows the first-time setup in its window instead of asking you to run commands', async () => {
+  browserEnv();
+  fs.rmSync(browserDir, { recursive: true, force: true });
+  const os = fresh();
+  const w = os.launch('tricycle-browser');
+  assert.ok(w, 'it opens');
+  const s = screen(os);
+  assert.match(s, /Setting up the browser \(first time only\)/);
+  assert.match(s, /Installing the browser packages/);
+  assert.doesNotMatch(s, /npm run browser:install/);
+  await w.app.ready; // (the stand-in browser then refuses to launch)
+  const after = screen(os);
+  assert.match(after, /Browser unavailable/);
+  assert.match(after, /node src\/browser-setup\.js/);
+  os.closeWindow(w, true);
+  browserEnvOff();
+});
+
+await test('the setup command line never fails a tlib install, and tells you plainly when it cannot finish', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const script = new URL('../src/browser-setup.js', import.meta.url).pathname;
+  const env = { ...process.env, TRIDOS_BROWSER_DIR: path.join(path.dirname(home), 'empty-browser'), TRIDOS_NPM: '/no/such/npm', TRIDOS_NO_SYSTEM_CHROME: '1' };
+  delete env.TRIDOS_BROWSER_NO_SETUP;
+  const inst = spawnSync(process.execPath, [script, '--install'], { env, encoding: 'utf8' });
+  assert.equal(inst.status, 0, 'exit 0 even though npm is missing');
+  assert.match(inst.stdout, /Could not finish/);
+  assert.match(inst.stdout, /sets itself up the first time/);
+  const manual = spawnSync(process.execPath, [script], { env, encoding: 'utf8' });
+  assert.equal(manual.status, 1, 'by hand it says it failed');
+  const off = spawnSync(process.execPath, [script, '--install'], { env: { ...env, TRIDOS_BROWSER_NO_SETUP: '1' }, encoding: 'utf8' });
+  assert.match(off.stdout, /Skipped/);
+  // the tlib recipe runs that command and always ends well
+  const xml = fs.readFileSync(new URL('../info.xml', import.meta.url), 'utf8');
+  assert.match(xml, /build="node src\/browser-setup\.js --install"/);
+  assert.match(xml, /output="bin\/tridos"/);
+});
+
 await test('an app\'s saved state is written soon after you use it, not only when you quit', () => {
   const os = fresh();
   os.install('editor');

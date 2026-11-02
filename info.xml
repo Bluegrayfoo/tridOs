@@ -5,7 +5,8 @@
       <tool name="node"/>
     </requires>
     <commands>
-      <command name="tridos" language="shell" source="bin/tridos"/>
+      <!-- the build step sets up the Tricycle browser (npm packages and Chromium); it never fails the install -->
+      <command name="tridos" build="node src/browser-setup.js --install" output="bin/tridos"/>
     </commands>
   </package>
 </tlib>
