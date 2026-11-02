@@ -20,6 +20,8 @@ class Settings {
     this.hits = new Hits();
     this.previews = {};
     this.items = [];
+    this.wallCols = 1;
+    this.wallPageSize = 1;
   }
   save() {
     return { section: this.section };
@@ -135,11 +137,18 @@ class Settings {
         y += 2;
       } else if (it.type === 'wall') {
         const cols = Math.max(1, Math.floor((w + 2) / 16));
+        const rows = Math.max(1, Math.floor((v.h - y - 2) / 7));
+        this.wallCols = cols;
+        this.wallPageSize = cols * rows;
+        this.sel = clamp(this.sel ?? Math.max(0, WALLPAPER_IDS.indexOf(s.wallpaper)), 0, WALLPAPER_IDS.length - 1);
+        const page = Math.floor(this.sel / this.wallPageSize);
+        const start = page * this.wallPageSize;
         const pwid = 14;
         const phei = 5;
         WALLPAPER_IDS.forEach((id, k) => {
-          const cx = x0 + (k % cols) * 16;
-          const cy = y + Math.floor(k / cols) * (phei + 2);
+          if (k < start || k >= start + this.wallPageSize) return;
+          const cx = x0 + ((k - start) % cols) * 16;
+          const cy = y + Math.floor((k - start) / cols) * (phei + 2);
           if (cy + phei + 1 >= v.h) return;
           const chosen = s.wallpaper === id;
           const px = pwid * v.pw;
@@ -155,8 +164,14 @@ class Settings {
             v.pxRect(cx * v.pw + px, cy * v.ph - 1, 1, py + 2, c);
           }
           v.text(cx, cy + phei, fit(wallpaperName(id), pwid), chosen ? th.accent : th.dim);
-          this.hits.add(cx, cy, pwid, phei + 1, () => ((this.sel = k), this.set('wallpaper', id)));
+          this.hits.add(cx, cy, pwid, phei + 1, () => ((this.focus = 'content'), (this.sel = k), this.set('wallpaper', id)));
         });
+        const pages = Math.ceil(WALLPAPER_IDS.length / this.wallPageSize);
+        if (pages > 1) {
+          button(v, this.hits, x0, v.h - 1, '<', th, () => this.wallPage(-1));
+          v.text(x0 + 4, v.h - 1, `${page + 1}/${pages}`, th.dim);
+          button(v, this.hits, x0 + 10, v.h - 1, '>', th, () => this.wallPage(1));
+        }
       }
     });
   }
@@ -182,8 +197,12 @@ class Settings {
       this.sel = this.sel ?? Math.max(0, ids.indexOf(s.wallpaper));
       if (k === 'left') this.sel = (this.sel + ids.length - 1) % ids.length;
       else if (k === 'right') this.sel = (this.sel + 1) % ids.length;
-      else if (k === 'up') this.sel = Math.max(0, this.sel - 2);
-      else if (k === 'down') this.sel = Math.min(ids.length - 1, this.sel + 2);
+      else if (k === 'up') this.sel = Math.max(0, this.sel - this.wallCols);
+      else if (k === 'down') this.sel = Math.min(ids.length - 1, this.sel + this.wallCols);
+      else if (k === 'pageup') this.wallPage(-1);
+      else if (k === 'pagedown') this.wallPage(1);
+      else if (k === 'home') this.sel = 0;
+      else if (k === 'end') this.sel = ids.length - 1;
       else if (k === 'enter' || k === ' ') this.set('wallpaper', ids[this.sel]);
       else return false;
       return true;
@@ -203,7 +222,14 @@ class Settings {
     else return false;
     return true;
   }
+  wallPage(direction) {
+    const size = this.wallPageSize;
+    const page = clamp(Math.floor((this.sel ?? 0) / size) + direction, 0, Math.ceil(WALLPAPER_IDS.length / size) - 1);
+    this.sel = page * size;
+    this.focus = 'content';
+  }
   mouse(e) {
+    if (e.kind === 'wheel' && this.section === 'wallpaper') this.wallPage(e.dir);
     if (e.kind === 'down' && e.button === 0) this.hits.click(e.x, e.y);
   }
 }
