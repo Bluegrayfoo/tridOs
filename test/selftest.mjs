@@ -174,6 +174,24 @@ await test('App Store: Get downloads an app, it lands in the Dock, and the Finde
   assert.equal(os.dockItems().length, 6);
 });
 
+await test('utilities launch through the OS with null saved state and reopen with saved state', () => {
+  const os = fresh();
+  for (const id of ['calculator', 'unit-converter', 'calendar']) {
+    os.install(id);
+    const win = os.launch(id);
+    assert.ok(win, id + ' must open on its first launch');
+    screen(os);
+    assert.ok(!win.errored, id + ' must render');
+    const data = win.app.save();
+    os.closeWindow(win);
+    const restored = os.launch(id, data);
+    assert.ok(restored, id + ' must restore');
+    screen(os);
+    assert.ok(!restored.errored);
+    os.closeWindow(restored);
+  }
+});
+
 await test('every app opens, draws a full frame and takes keys without errors', () => {
   const os = fresh();
   for (const id of ['finder', 'terminal', 'editor', 'grapher', 'studio']) os.install(id);

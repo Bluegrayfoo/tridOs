@@ -31,6 +31,7 @@ const number=n=>Number(n.toPrecision(12)).toString();
 export const calculator={
   id:'calculator',name:'Calculator',desc:'Arithmetic, parentheses, powers, percentages and calculation history.',icon:'calculator',size:[44,25],minSize:[34,21],
   create(os,win,saved={}) {
+    saved = saved ?? {};
     const input=new LineInput(String(saved.input||'').slice(0,256)),hits=new Hits();
     let result=String(saved.result||'0'),error=false;
     const history=Array.isArray(saved.history)?saved.history.filter(h=>typeof h?.expression==='string'&&typeof h?.result==='string').slice(-30):[];
@@ -71,6 +72,7 @@ export function convert(value,category,from,to){
 export const converter={
   id:'unit-converter',name:'Unit Converter',desc:'Convert length, mass, temperature, volume, speed and time offline.',icon:'converter',size:[54,23],minSize:[48,22],
   create(os,win,saved={}){
+    saved = saved ?? {};
     const index=(n,max,fallback)=>Number.isInteger(n)&&n>=0&&n<max?n:fallback;
     let category=index(saved.category,UNIT_GROUPS.length,0),from=index(saved.from,UNIT_GROUPS[category].units.length,0),to=index(saved.to,UNIT_GROUPS[category].units.length,1);
     const input=new LineInput(String(saved.input??'1').slice(0,64)),hits=new Hits();
@@ -100,6 +102,7 @@ export function monthGrid(year,month){const first=new Date(year,month,1).getDay(
 export const calendar={
   id:'calendar',name:'Calendar',desc:'Browse months, jump to today and keep a note for any date.',icon:'calendar',size:[54,25],minSize:[44,22],
   create(os,win,saved={}){
+    saved = saved ?? {};
     const now=new Date();let year=Number.isInteger(saved.year)&&saved.year>=100&&saved.year<=9999?saved.year:now.getFullYear(),month=Number.isInteger(saved.month)&&saved.month>=0&&saved.month<12?saved.month:now.getMonth();
     let selected=Number.isInteger(saved.selected)?clamp(saved.selected,1,monthDays(year,month)):year===now.getFullYear()&&month===now.getMonth()?now.getDate():1;
     const notes={};if(saved.notes&&typeof saved.notes==='object')for(const [k,v]of Object.entries(saved.notes).slice(-1000))if(/^\d{4}-\d{2}-\d{2}$/.test(k)&&typeof v==='string')notes[k]=v.slice(0,500);

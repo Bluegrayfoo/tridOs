@@ -129,6 +129,6 @@ assert.equal(calendar.create(os,{},cal.save()).save().notes['2025-01-01'],'Remem
 for(const def of [calculator,converter,calendar]){
  assert.ok(loadBuiltinApps()[def.id]);
  store.clearSearch();store.search.set(def.name);assert.ok(store.list().some(d=>d.id===def.id));
- for(const [w,h]of [def.minSize,def.size]){const cv=new Canvas(w*3,Math.ceil(h*10/4));def.create(os,{},{}).draw(new ui.View(cv,0,0,w,h),true);assert.ok(cv.pix.some(c=>c!==th.bg));}
+ for(const saved of [undefined,null,{}]) for(const [w,h]of [def.minSize,def.size]){const cv=new Canvas(w*3,Math.ceil(h*10/4));def.create(os,{},saved).draw(new ui.View(cv,0,0,w,h),true);assert.ok(cv.pix.some(c=>c!==th.bg));}
 }
 console.log('PASS: utility store discovery, calculator precedence/validation/history, six conversion categories, leap years/month boundaries, date notes and responsive drawing');
