@@ -1087,7 +1087,7 @@ fs.appendFileSync(${JSON.stringify(npmLog)}, process.argv.slice(2).join(' ') + '
 console.log('npm stub: installing');
 const t = Date.now(); while (Date.now() - t < 300) {} // slow enough to see the progress
 const nm = path.join(process.cwd(), 'node_modules');
-const pkg = (name, main) => { fs.mkdirSync(path.join(nm, name), { recursive: true }); fs.writeFileSync(path.join(nm, name, 'package.json'), JSON.stringify({ name, main: 'index.js' })); fs.writeFileSync(path.join(nm, name, 'index.js'), main); };
+const pkg = (name, main) => { fs.mkdirSync(path.join(nm, name), { recursive: true }); fs.writeFileSync(path.join(nm, name, 'package.json'), JSON.stringify({ name, main: 'index.js', exports: { '.': './index.js', './package.json': './package.json' } })); fs.writeFileSync(path.join(nm, name, 'index.js'), main); };
 pkg('playwright', "const path = require('path'); const exe = path.join(__dirname, 'chromium-bin'); module.exports = { chromium: { executablePath: () => exe, launch: async () => { throw new Error('stub: no real browser'); } } };");
 fs.writeFileSync(path.join(nm, 'playwright', 'cli.js'), "const fs = require('fs'), path = require('path'); console.log('Downloading Chromium 10%'); console.log('Downloading Chromium 100%'); fs.writeFileSync(path.join(__dirname, 'chromium-bin'), 'x');");
 pkg('pngjs', 'module.exports = { PNG: { sync: { read() {} } } };');
@@ -1143,7 +1143,8 @@ await test('Chromium first: Chrome is only a fallback, and only when it is there
   const dir = path.join(path.dirname(home), 'browser-fallback');
   const pkg = (name, js) => {
     fs.mkdirSync(path.join(dir, 'node_modules', name), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'node_modules', name, 'package.json'), JSON.stringify({ name, main: 'index.js' }));
+    // (an exports map like the real Playwright has: it does not list cli.js, so require.resolve('playwright/cli.js') fails)
+    fs.writeFileSync(path.join(dir, 'node_modules', name, 'package.json'), JSON.stringify({ name, main: 'index.js', exports: { '.': './index.js', './package.json': './package.json' } }));
     fs.writeFileSync(path.join(dir, 'node_modules', name, 'index.js'), js);
   };
   pkg('playwright', "module.exports = { chromium: { executablePath: () => '/no/such/chromium', launch: async () => { throw new Error('stub'); } } };");

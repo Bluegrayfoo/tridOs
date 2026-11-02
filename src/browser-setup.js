@@ -108,12 +108,14 @@ export async function setupBrowser({ onProgress = () => {} } = {}) {
   if (!st.chromium) {
     onProgress('Downloading Chromium, the web engine (about 150 MB, once)…');
     const pw = loadPackage('playwright');
+    // (Playwright's package.json does not export cli.js, so find the package folder through package.json and look beside it.)
     const cli = (() => {
       try {
-        return createRequire(path.join(pw.dir, 'x.js')).resolve('playwright/cli.js');
-      } catch {
-        return null;
-      }
+        const folder = path.dirname(createRequire(path.join(pw.dir, 'x.js')).resolve('playwright/package.json'));
+        if (fs.existsSync(path.join(folder, 'cli.js'))) return path.join(folder, 'cli.js');
+      } catch {}
+      const guess = path.join(pw.dir, 'node_modules', 'playwright', 'cli.js');
+      return fs.existsSync(guess) ? guess : null;
     })();
     if (!cli) return { ok: false, error: 'Could not find the Playwright installer.' };
     const r = await run(process.execPath, [cli, 'install', 'chromium'], { cwd: pw.dir, onLine: (l) => onProgress(l.slice(0, 120)) });
