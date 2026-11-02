@@ -39,6 +39,11 @@ class IconCtx {
 }
 
 export const ICONS = {
+  notes: {c1:0xffd967,c2:0xe99d27,paint(g){g.rect(.18,.17,.64,.68,0xfff9e6);for(let i=0;i<3;i++){g.rect(.26,.32+i*.17,.09,.08,0xe9ae35);g.line(.43,.36+i*.17,.72,.36+i*.17,0x9d804c);}g.line(.25,.51,.29,.55,0x25795f);g.line(.29,.55,.38,.44,0x25795f);}},
+  sheets: {c1:0x63cf9a,c2:0x13754e,paint(g){g.rect(.15,.19,.7,.63,0xebfff4);g.rect(.15,.19,.7,.14,0x9bdcbb);for(let i=1;i<4;i++){g.line(.15,.19+i*.16,.85,.19+i*.16,0x248560);g.line(.15+i*.175,.19,.15+i*.175,.82,0x248560);}g.rect(.51,.51,.16,.14,0xf6bf4c);}},
+  monitor: {c1:0x4b6580,c2:0x1d2c43,paint(g){g.rect(.12,.19,.76,.55,0x0c1725);const p=[[.16,.53],[.3,.53],[.39,.34],[.49,.66],[.59,.44],[.67,.53],[.84,.53]];for(let i=1;i<p.length;i++)g.line(...p[i-1],...p[i],0x70efb2);g.rect(.46,.74,.08,.12,0xd0dfeb);g.rect(.3,.86,.4,.04,0xd0dfeb);}},
+  disk: {c1:0xd6deea,c2:0x7f92aa,paint(g){g.rect(.17,.14,.66,.72,0x3d5067);g.ring(.5,.45,.24,0xe0e7f0,true);g.ring(.5,.45,.07,0x4c657f,true);g.line(.72,.75,.5,.45,0xffba56);g.rect(.23,.77,.1,.04,0x80f1bb);}},
+  palette: {c1:0x9770ec,c2:0x48318e,paint(g){g.ring(.5,.5,.35,0xfff5e7,true);for(const [x,y,c] of [[.32,.32,0xff6b73],[.58,.27,0xffcb50],[.74,.48,0x4bcca1],[.57,.7,0x4baeff]])g.ring(x,y,.09,c,true);g.ring(.3,.61,.09,0x7652bf,true);}},
   calculator: {
     c1:0x546476,c2:0x263445,
     paint(g){g.rect(.17,.14,.66,.23,0xccead6);for(let y=0;y<3;y++)for(let x=0;x<3;x++)g.rect(.18+x*.24,.47+y*.15,.15,.1,x===2?0xffa23d:0xd7e0e9);},

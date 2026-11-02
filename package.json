@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node bin/tridos",
-    "test": "node test/selftest.mjs && node test/apps.mjs",
+    "test": "node test/selftest.mjs && node test/apps.mjs && node test/productivity.mjs",
     "browser:install": "playwright install chromium",
     "test:browser": "node test/browser.mjs"
   },

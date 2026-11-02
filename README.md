@@ -75,20 +75,35 @@ so). Then:
 Only the **App Store** is installed at first. Open it, choose **Get**, and the app lands in the Dock:
 
 - **Tricycle browser**: a real Chromium browser with tabs, links, forms, JavaScript, back/forward, reload and scrolling. Web pages are rendered into the terminal pixel buffer. See [browser setup](#tricycle-browser-setup).
-- **Clock & Stopwatch**: local digital/analog clock, stopwatch, pause/resume, reset and lap history. A running stopwatch continues across restarts. Also available as a shared catalog app.
+- **Clock & Stopwatch**: local digital/analog clock, stopwatch, pause/resume, reset, lap history, and a countdown timer. Timer tab: enter minutes, choose Set, then Start; Space pauses/resumes. Keep the app open for completion alerts. A running stopwatch continues across restarts. Also available as a shared catalog app.
 - **Calculator**: arithmetic with parentheses, powers (`^`), percentage values (`%` means divide by 100), and saved calculation history. Enter calculates; Ctrl+U clears.
 - **Unit Converter**: offline length, mass, temperature, volume (US customary), speed and time conversions. Swap units or choose them with the arrow buttons.
 - **Calendar**: browse months and save a note for any date. Arrows select a day, Page Up/Down change the month, T returns to today, and Enter edits the selected date's note.
+- **Notes & Checklists**: searchable notes, editable titles, and `[ ]` / `[x]` tasks. Ctrl+N adds a note, Ctrl+F searches, Ctrl+T toggles the current task. Notes autosave and survive closing the app.
+- **System Monitor**: live host CPU/memory, uptime and TridOS process memory. Unavailable host metrics are handled without crashing.
+- **Disk Usage**: scan the TridOS disk for large folders/files; read-only, asynchronous, with symbolic links skipped. R rescans.
+- **Color Picker**: HEX/RGB input, live preview, black/white contrast ratios, and a saved palette. Enter keeps a swatch.
+- **Spreadsheets**: 26 columns × 500 rows, formulas, references, undo/redo, workbooks, and CSV import/export. See [spreadsheet basics](#spreadsheet-basics).
 - **Finder**: browse the TridOS disk, make folders and files, rename, trash, open. (Keys: arrows, Enter,
   Backspace up, `n` new folder, `f` new file, `r` rename, `t` trash.)
 - **Terminal**: TridOS commands (`help`) and, for anything else, your real shell, run in the folder you are in.
-- **Text Editor**: plain text and code, line numbers, undo, JavaScript highlighting. Ctrl+S saves.
+- **Text Editor**: plain text and code, line numbers, undo, JavaScript highlighting. Ctrl+S saves. Tools menu adds word/character counts, uppercase/lowercase, line sorting/deduplication and trailing-space cleanup. Ctrl+P toggles a text-only Markdown preview (headings, lists, links, quotes and fenced code; no HTML execution). Text transforms can be undone.
 - **Grapher**: plot equations like Desmos: `y = sin(x)`, `f(x) = x^2`, `a = 2` then `y = a x`, `x = 3`, `|x|`.
   Drag to pan, wheel to zoom, Tab for keyboard pan/zoom. Curves are drawn to the pixel.
 - **Code Studio**: write your own apps (below).
 - **App Distributor**: send your apps to anyone with TridOS, and install apps people send you. See below.
 - **System Settings** (in the  menu, not the App Store): dark / light, accent colour, wallpaper (9), pixel
   mode, colour depth, clock, Dock size. Changes apply and save at once.
+
+## Spreadsheet basics
+
+Get **Spreadsheets** from the App Store. Select a cell and type, or press Enter/F2 to edit its formula. Enter commits and moves down; Tab moves across; Esc cancels. Arrows navigate; Ctrl+Z/Y undo/redo.
+
+Examples: `=A1*2`, `=(A1+B1)/2`, `=SUM(A1:B10)`, `=AVERAGE(A1:A10)`, `=MIN(A1:A10)`, `=MAX(A1:A10,5)`. Arithmetic uses `+ - * / ^ %` and parentheses. Functions accept numeric literals, cells and rectangular ranges; nested functions and cross-sheet references are not supported. Ranges ignore text. Cycles, invalid references and invalid formulas show an error in the cell. No macros or JavaScript are executed.
+
+The active workbook autosaves under `~/.tridos/app-data/` and survives closing the app. **Save/Open** writes/reads `.tridsheet` JSON files on the TridOS disk with formulas intact. **Import CSV** replaces the current grid (undoable); **Export CSV** writes displayed values, not formulas. Quotes, commas and embedded newlines round-trip. Text that could be interpreted as a formula by another spreadsheet is prefixed with an apostrophe on export. Imports are limited to 5 MB, 500 rows, 26 columns and 1,000 characters per cell. Existing exports require confirmation before replacement.
+
+Notes and saved color palettes also live in `~/.tridos/app-data/`; resetting desktop settings does not erase them. These are local files, not encrypted storage.
 
 ## Making apps
 
